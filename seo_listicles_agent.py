@@ -15,7 +15,7 @@ CLI usage
 
 API usage (imported by api.py)
 -------------------------------
-    from seo_listicles_agent import run, write_excel
+    from seo_listicles_agent import run, write_excel_history, write_excel_company
 
 Modes
 -----

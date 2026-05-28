@@ -73,11 +73,6 @@ class SearchRequest(BaseModel):
     contacts:         bool        = False
 
 
-class ExportRequest(BaseModel):
-    keyword: str
-    results: list
-
-
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
@@ -196,26 +191,6 @@ async def stream_events(run_id: str):
         generator(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
-
-
-@app.post("/api/export")
-async def export_excel(req: ExportRequest):
-    """Accept results JSON; return an Excel file download."""
-    buf = io.BytesIO()
-    # Extract region from results if available
-    region = "us"
-    if req.results:
-        # Try to extract region from first result if available
-        region = "us"  # default
-    agent.write_excel(req.keyword, req.results, buf, region=region)
-    buf.seek(0)
-    safe     = re.sub(r"[^a-z0-9]+", "_", req.keyword.lower()).strip("_")
-    filename = f"listicles_{safe}.xlsx"
-    return StreamingResponse(
-        buf,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SEO Listicles Agent</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -155,13 +154,6 @@
     .company-card .actions button { flex: 1; padding: 6px;
                                      font-size: .78rem; font-weight: 600; cursor: pointer;
                                      border-radius: 5px; border: none; }
-
-    /* ── Charts ── */
-    .chart-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
-    @media (max-width: 900px) { .chart-row { grid-template-columns: 1fr; } }
-    .chart-card { background: #fff; padding: 18px; border-radius: 10px;
-                  box-shadow: 0 1px 4px rgba(0,0,0,.08); }
-    .chart-card canvas { max-width: 100%; }
 
     /* ── Search ── */
     .row-options { display: flex; gap: 24px; align-items: center;
@@ -335,17 +327,6 @@
         <div id="dashboardCompanies" class="companies-grid"></div>
       </div>
 
-      <div class="chart-row">
-        <div class="chart-card">
-          <div class="card-title">Search Activity (Last 30 Days)</div>
-          <canvas id="activityChart" height="100"></canvas>
-        </div>
-        <div class="chart-card">
-          <div class="card-title">Listed Pages per Company</div>
-          <canvas id="listedChart" height="100"></canvas>
-        </div>
-      </div>
-
       <div class="card">
         <div class="card-title">Recent Activity</div>
         <div id="recentActivity"></div>
@@ -441,8 +422,11 @@
             <div class="field">
               <label for="bulkTargetListicles">Per keyword</label>
               <select id="bulkTargetListicles">
-                <option value="5" selected>5 listicles</option>
-                <option value="10">10 listicles</option>
+                <option value="5">5 listicles</option>
+                <option value="10" selected>10 listicles</option>
+                <option value="15">15 listicles</option>
+                <option value="20">20 listicles</option>
+                <option value="30">30 listicles</option>
               </select>
             </div>
           </div>
@@ -700,9 +684,6 @@
   let _currentRunId = null;
   let _activeView = "dashboard";
 
-  // Charts
-  let _activityChart = null, _listedChart = null;
-
   // ============================================================
   // HELPERS
   // ============================================================
@@ -764,8 +745,6 @@
       const data = await (await fetch("/api/dashboard")).json();
       renderDashboardStats(data.totals);
       renderDashboardCompanies(data.company_stats);
-      renderActivityChart(data.activity_30d);
-      renderListedChart(data.company_stats);
       renderRecentActivity(data.recent_searches);
     } catch (e) {
       console.error("Dashboard load error:", e);
@@ -817,41 +796,6 @@
         </div>
       </div>
     `).join("");
-  }
-
-  function renderActivityChart(activity) {
-    const ctx = $("activityChart").getContext("2d");
-    if (_activityChart) _activityChart.destroy();
-    const labels = activity.map(a => a.date.slice(5));
-    const data   = activity.map(a => a.count);
-    _activityChart = new Chart(ctx, {
-      type: "line",
-      data: { labels, datasets: [{
-        label: "Searches per day", data,
-        backgroundColor: "rgba(37,99,235,.15)",
-        borderColor: "#2563EB", tension: .3, fill: true,
-      }] },
-      options: { responsive: true, maintainAspectRatio: false,
-                 plugins: { legend: { display: false } },
-                 scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
-    });
-  }
-
-  function renderListedChart(companies) {
-    const ctx = $("listedChart").getContext("2d");
-    if (_listedChart) _listedChart.destroy();
-    if (!companies || companies.length === 0) { return; }
-    _listedChart = new Chart(ctx, {
-      type: "bar",
-      data: {
-        labels: companies.map(c => c.name),
-        datasets: [{ label: "Listed", data: companies.map(c => c.listed),
-                     backgroundColor: "#16A34A" }],
-      },
-      options: { responsive: true, maintainAspectRatio: false,
-                 plugins: { legend: { display: false } },
-                 scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
-    });
   }
 
   function renderRecentActivity(searches) {
