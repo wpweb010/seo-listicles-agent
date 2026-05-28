@@ -299,10 +299,11 @@
       SEO Listicles
     </div>
     <nav>
-      <a data-view="dashboard" class="active" onclick="switchView('dashboard')"><span class="icon">🏠</span>Dashboard</a>
-      <a data-view="search"    onclick="switchView('search')"><span class="icon">🔍</span>Search</a>
-      <a data-view="history"   onclick="switchView('history')"><span class="icon">📜</span>History</a>
-      <a data-view="settings"  onclick="switchView('settings')"><span class="icon">⚙</span>Settings</a>
+      <a data-view="dashboard"   class="active" onclick="switchView('dashboard')"><span class="icon">🏠</span>Dashboard</a>
+      <a data-view="search"      onclick="switchView('search')"><span class="icon">🔍</span>Search</a>
+      <a data-view="history"     onclick="switchView('history')"><span class="icon">📜</span>History</a>
+      <a data-view="competitors" onclick="switchView('competitors')"><span class="icon">👥</span>Competitors</a>
+      <a data-view="settings"    onclick="switchView('settings')"><span class="icon">⚙</span>Settings</a>
     </nav>
     <div class="footer">v1.5 · Local tool</div>
   </aside>
@@ -446,7 +447,10 @@
       </div>
 
       <div class="card" id="resultsCard" style="display:none">
-        <div class="card-title" id="resultsTitle">Results</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div class="card-title" id="resultsTitle" style="margin:0">Results</div>
+          <div id="resultsVerifyActions" style="display:flex;gap:6px"></div>
+        </div>
         <div class="stats-bar" id="statsBar"></div>
         <div class="filter-bar">
           <span style="font-size:.8rem;font-weight:600;color:#5A6A7E">Show:</span>
@@ -511,6 +515,70 @@
       </div>
     </div>
 
+    <!-- ━━━━━━━━━━ COMPETITORS VIEW ━━━━━━━━━━ -->
+    <div id="view-competitors" class="view">
+      <div class="view-header">
+        <div>
+          <h1>Competitors</h1>
+          <p>Auto-discovered from listicles where your company is searched. Find coverage gaps.</p>
+        </div>
+        <select id="competitorsCompanySelect" onchange="onCompetitorsCompanyChange()"
+                style="padding:9px 14px;border:1.5px solid #D0D9E3;border-radius:7px;font-size:.92rem;min-width:240px">
+          <option value="">— Select a company —</option>
+        </select>
+      </div>
+
+      <div class="card" id="competitorsFilters" style="display:none">
+        <div class="card-title">Filter Competitors</div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start">
+          <div style="flex:1;min-width:280px">
+            <label style="display:block;font-size:.78rem;font-weight:600;color:#5A6A7E;margin-bottom:6px">
+              Keywords (leave all unchecked to include ALL)
+            </label>
+            <div id="keywordFilterList" style="border:1px solid #D0D9E3;border-radius:6px;padding:8px;max-height:160px;overflow-y:auto;background:#FAFBFC"></div>
+            <div style="margin-top:6px;font-size:.78rem">
+              <a onclick="selectAllKeywords(true)" style="color:#2E75B6;cursor:pointer;text-decoration:underline">Select all</a>
+              ·
+              <a onclick="selectAllKeywords(false)" style="color:#2E75B6;cursor:pointer;text-decoration:underline">Clear</a>
+            </div>
+          </div>
+          <div style="min-width:140px">
+            <label style="display:block;font-size:.78rem;font-weight:600;color:#5A6A7E;margin-bottom:6px">Min appearances</label>
+            <select id="minAppearances" onchange="loadCompetitors()"
+                    style="width:100%;padding:8px;border:1.5px solid #D0D9E3;border-radius:6px">
+              <option value="1">1+</option>
+              <option value="2" selected>2+</option>
+              <option value="3">3+</option>
+              <option value="5">5+</option>
+            </select>
+            <button class="btn btn-primary btn-sm" style="width:100%;margin-top:8px" onclick="loadCompetitors()">Apply Filter</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="competitorsListCard" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div class="card-title" style="margin:0">Competitors (sorted by co-appearance)</div>
+          <div id="competitorsFilterSummary" style="font-size:.8rem;color:#6B7280"></div>
+        </div>
+        <p style="font-size:.8rem;color:#6B7280;margin-bottom:12px">
+          Click any competitor to see <strong>Coverage Gaps</strong> — listicles where they appear but you don't.
+        </p>
+        <div id="competitorsTable"></div>
+      </div>
+
+      <div class="card" id="coverageGapCard" style="display:none">
+        <div class="card-title" id="coverageGapTitle">Coverage Gap</div>
+        <div id="coverageGapBody"></div>
+      </div>
+
+      <div class="card" id="competitorsEmpty">
+        <p style="color:#6B7280;padding:20px;text-align:center">
+          Select a company above to see its auto-discovered competitors.
+        </p>
+      </div>
+    </div>
+
     <!-- ━━━━━━━━━━ SETTINGS VIEW ━━━━━━━━━━ -->
     <div id="view-settings" class="view">
       <div class="view-header">
@@ -547,7 +615,11 @@
           </p>
           <div id="apiKeysList"></div>
           <div style="margin-top:18px">
-            <button class="btn btn-primary btn-sm" onclick="openApiKeyModal()">+ Add / Update Key</button>
+            <button class="btn btn-primary btn-sm" onclick="openApiKeyModal()">+ Add API Key</button>
+            <p style="margin-top:8px;font-size:.78rem;color:#6B7280">
+              Multiple keys per provider supported. The agent uses the highest-priority active key
+              first, then automatically fails over when one runs out of quota.
+            </p>
           </div>
         </div>
       </div>
@@ -620,7 +692,7 @@
 <!-- API Key Modal -->
 <div id="apiKeyModal" class="modal">
   <div class="modal-content">
-    <h3>Add or Update API Key</h3>
+    <h3>Add API Key</h3>
     <div class="field" style="margin-bottom:12px">
       <label>Provider *</label>
       <select id="apiProvider" onchange="onApiProviderChange()">
@@ -638,10 +710,28 @@
       <label>Search Engine ID (cx)</label>
       <input id="apiCx" type="text" autocomplete="off" placeholder="Required for Google CSE">
     </div>
+    <div style="display:grid;grid-template-columns:1fr 100px 130px;gap:10px;margin-bottom:12px">
+      <div class="field">
+        <label>Label (optional)</label>
+        <input id="apiLabel" type="text" placeholder="e.g. Primary, Backup">
+      </div>
+      <div class="field">
+        <label>Priority</label>
+        <input id="apiPriority" type="number" value="0" min="0" step="1">
+      </div>
+      <div class="field">
+        <label id="apiQuotaLabel">Monthly Limit</label>
+        <input id="apiQuota" type="number" placeholder="e.g. 2500">
+      </div>
+    </div>
+    <p style="font-size:.75rem;color:#6B7280;margin-top:-4px">
+      Lower priority = used first. Leave Limit blank to use provider default
+      (Serper: 2,500/mo · CSE: 100/day · OPR: 1,000/day).
+    </p>
     <div id="apiKeyTestResult" style="font-size:.85rem;margin-top:10px"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
       <button class="btn btn-ghost" onclick="closeModal('apiKeyModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveApiKey()">Save</button>
+      <button class="btn btn-primary" onclick="saveApiKey()">Save &amp; Test</button>
     </div>
   </div>
 </div>
@@ -654,6 +744,28 @@
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
       <button class="btn btn-ghost" onclick="closeModal('exportModal')">Close</button>
     </div>
+  </div>
+</div>
+
+<!-- SERP Compare Modal -->
+<div id="compareModal" class="modal">
+  <div class="modal-content" style="max-width:900px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="margin:0">⚖ SERP Comparison — Cached vs Fresh</h3>
+      <button onclick="closeModal('compareModal')" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#666">×</button>
+    </div>
+    <div id="compareContent"></div>
+  </div>
+</div>
+
+<!-- Listicle Deep-dive Modal -->
+<div id="listicleModal" class="modal">
+  <div class="modal-content" style="max-width:780px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="margin:0">📋 Companies on this Listicle</h3>
+      <button onclick="closeModal('listicleModal')" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#666">×</button>
+    </div>
+    <div id="listicleModalContent"></div>
   </div>
 </div>
 
@@ -683,6 +795,9 @@
   let _exportingCompanyId = null;
   let _currentRunId = null;
   let _activeView = "dashboard";
+  let _lastSearchKeyword = "";
+  let _lastSearchRegion = "us";
+  let _lastSearchId = null;
 
   // ============================================================
   // HELPERS
@@ -703,6 +818,50 @@
       ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
+  // Battle-tested UULE values (Google's encoded canonical location).
+  // gl= alone is just a hint — uule= forces the location regardless of user IP.
+  const UULE_MAP = {
+    us: "w+CAIQICIYVW5pdGVkIFN0YXRlcw",       // United States
+    uk: "w+CAIQICIUVW5pdGVkIEtpbmdkb20",      // United Kingdom
+    ca: "w+CAIQICIGQ2FuYWRh",                  // Canada
+    au: "w+CAIQICIJQXVzdHJhbGlh",              // Australia
+    in: "w+CAIQICIFSW5kaWE",                   // India
+    de: "w+CAIQICIHR2VybWFueQ",                // Germany
+    fr: "w+CAIQICIGRnJhbmNl",                  // France
+    sg: "w+CAIQICIJU2luZ2Fwb3Jl",              // Singapore
+    ae: "w+CAIQICIUVW5pdGVkIEFyYWIgRW1pcmF0ZXM", // UAE
+  };
+
+  // Country-restrict codes (additional safety — pins results to country's TLD scope)
+  const CR_MAP = {
+    us: "countryUS", uk: "countryUK", ca: "countryCA", au: "countryAU",
+    in: "countryIN", de: "countryDE", fr: "countryFR", sg: "countrySG", ae: "countryAE",
+  };
+
+  // Build a location-aware Google search URL for live verification.
+  // Uses uule + cr + gl together so Google honors the region.
+  function googleSearchUrl(keyword, region) {
+    const gl = (region || "us").toLowerCase();
+    const uule = UULE_MAP[gl] || "";
+    const cr   = CR_MAP[gl]   || "";
+    let url = `https://www.google.com/search?q=${encodeURIComponent(keyword)}&gl=${gl}&hl=en&pws=0`;
+    if (uule) url += `&uule=${encodeURIComponent(uule)}`;
+    if (cr)   url += `&cr=${cr}`;
+    return url;
+  }
+
+  function googleLinkButton(keyword, region, label) {
+    const url = googleSearchUrl(keyword, region);
+    const text = label || `View on Google (${(region || "us").toUpperCase()})`;
+    return `<a href="${url}" target="_blank" rel="noopener"
+              style="display:inline-flex;align-items:center;gap:4px;background:#4285F4;color:#fff;
+                     padding:5px 10px;border-radius:5px;text-decoration:none;font-size:.78rem;
+                     font-weight:600;white-space:nowrap"
+              title="Verify on Google (opens in new tab)">
+              🌐 ${text}
+            </a>`;
+  }
+
   // ============================================================
   // VIEW SWITCHING
   // ============================================================
@@ -716,6 +875,7 @@
     // Auto-refresh data per view
     if (view === "dashboard") loadDashboard();
     if (view === "history") loadHistory();
+    if (view === "competitors") loadCompetitorsCompanies();
     if (view === "settings") {
       loadCompanies();
       loadApiKeys();
@@ -934,6 +1094,18 @@
           loadCompanies();
         } else {
           _allResults = ev.results || [];
+          _lastSearchKeyword = $("keyword").value.trim();
+          _lastSearchRegion  = $("region").value;
+          // Get the most recent search_id (just created) for the Compare button
+          fetch("/api/history").then(r => r.json()).then(d => {
+            const recent = (d.history || [])[0];
+            if (recent && recent.keyword === _lastSearchKeyword) {
+              _lastSearchId = recent.search_id;
+            } else {
+              _lastSearchId = null;
+            }
+            renderResultsVerifyActions();
+          }).catch(() => { _lastSearchId = null; renderResultsVerifyActions(); });
           renderResults();
           $("progressTitle").textContent = `Done — ${_allResults.length} results`;
           $("resultsCard").style.display = "block";
@@ -1040,6 +1212,21 @@
     renderResults();
   }
 
+  function renderResultsVerifyActions() {
+    if (!_lastSearchKeyword) {
+      $("resultsVerifyActions").innerHTML = "";
+      return;
+    }
+    let html = googleLinkButton(_lastSearchKeyword, _lastSearchRegion,
+                                 `Verify on Google (${_lastSearchRegion.toUpperCase()})`);
+    if (_lastSearchId) {
+      html += ` <button onclick="compareSERP(${_lastSearchId})" class="btn btn-sm"
+                style="background:#7C3AED;color:#fff;padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:.78rem;font-weight:600">
+                ⚖ Compare cached vs fresh</button>`;
+    }
+    $("resultsVerifyActions").innerHTML = html;
+  }
+
   // ============================================================
   // HISTORY
   // ============================================================
@@ -1099,6 +1286,7 @@
     }
     tb.innerHTML = _historyFiltered.map((h) => {
       const date = h.timestamp ? new Date(h.timestamp).toLocaleDateString() : "—";
+      const gurl = googleSearchUrl(h.keyword, h.location);
       return `<tr>
         <td style="text-align:center">
           <input type="checkbox" data-sid="${h.search_id}" onchange="toggleSearchSelect(${h.search_id}, this)">
@@ -1110,6 +1298,10 @@
         <td style="white-space:nowrap">
           <button onclick="viewCachedSearch(${h.search_id})" title="View cached results"
                   style="background:none;border:1px solid #2E75B6;color:#2E75B6;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:.78rem;margin-right:4px">👁 View</button>
+          <a href="${gurl}" target="_blank" rel="noopener" title="Live Google SERP (${(h.location || 'us').toUpperCase()})"
+             style="display:inline-block;background:#4285F4;color:#fff;border-radius:4px;padding:3px 8px;font-size:.78rem;text-decoration:none;margin-right:4px">🌐 Google</a>
+          <button onclick="compareSERP(${h.search_id})" title="Compare cached vs fresh SERP"
+                  style="background:none;border:1px solid #7C3AED;color:#7C3AED;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:.78rem;margin-right:4px">⚖ Compare</button>
           <button onclick="rerunSearch(${h.search_id})" title="Re-run search"
                   style="background:none;border:1px solid #217346;color:#217346;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:.78rem;margin-right:4px">🔄 Re-run</button>
           <button onclick="deleteSearchEntry(${h.search_id})" title="Delete"
@@ -1419,47 +1611,125 @@
 
   function renderApiKeys(keys) {
     const PROVIDERS = {
-      "serper": "Serper.dev",
-      "google_cse": "Google Custom Search",
-      "openpagerank": "Open PageRank",
-      "semrush": "Semrush",
+      "serper":       { label: "Serper.dev",            period: "month", quota: 2500 },
+      "google_cse":   { label: "Google Custom Search",  period: "day",   quota: 100 },
+      "openpagerank": { label: "Open PageRank",         period: "day",   quota: 1000 },
+      "semrush":      { label: "Semrush",               period: "month", quota: null },
     };
     const list = $("apiKeysList");
     if (keys.length === 0) {
-      list.innerHTML = `<p style="color:#6B7280;padding:14px">No API keys configured. Click "+ Add / Update Key" below.</p>`;
+      list.innerHTML = `<p style="color:#6B7280;padding:14px">No API keys configured. Click "+ Add API Key" below.</p>`;
       return;
     }
-    list.innerHTML = keys.map(k => {
-      const usage = k.usage || {};
-      const statusHtml = k.last_status === "ok" ? `<span class="key-status-ok">✓ Verified</span>` :
-                         k.last_status === "error" ? `<span class="key-status-err">✗ Failed</span>` :
-                         `<span class="key-status-pending">Not tested</span>`;
-      const credits = (usage.latest_credits != null) ? `${usage.latest_credits} left` : "—";
-      return `<div class="list-row">
-        <div class="info" style="flex:1">
+
+    // Group by provider so multiple keys per provider show under one header
+    const grouped = {};
+    keys.forEach(k => {
+      if (!grouped[k.provider]) grouped[k.provider] = [];
+      grouped[k.provider].push(k);
+    });
+
+    let html = "";
+    for (const [provider, providerKeys] of Object.entries(grouped)) {
+      const meta = PROVIDERS[provider] || { label: provider, period: "month", quota: null };
+      // Aggregate stats across keys
+      const totalUsed = providerKeys.reduce((s, k) =>
+        s + (meta.period === "month" ? (k.usage?.month_calls || 0) : (k.usage?.today_calls || 0)), 0);
+      const totalQuota = providerKeys.reduce((s, k) =>
+        s + (meta.period === "month" ? (k.monthly_limit || meta.quota || 0) : (k.daily_limit || meta.quota || 0)), 0);
+      const pct = totalQuota ? Math.min(100, Math.round((totalUsed / totalQuota) * 100)) : 0;
+      const periodLabel = meta.period === "month" ? "this month" : "today";
+
+      html += `<div style="margin-bottom:18px;border:1px solid #E0E8F0;border-radius:8px;padding:14px;background:#FAFBFC">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
           <div>
-            <strong>${PROVIDERS[k.provider] || k.provider}</strong><br>
-            <code style="font-size:.78rem;color:#6B7280">${escapeHtml(k.key_masked || "")}</code>
+            <strong style="color:#1F4E78">${meta.label}</strong>
+            <span style="margin-left:8px;color:#6B7280;font-size:.8rem">
+              ${providerKeys.length} key${providerKeys.length > 1 ? 's' : ''} · ${totalUsed}${totalQuota ? '/' + totalQuota : ''} used ${periodLabel}
+            </span>
           </div>
+          ${totalQuota ? `
+            <div style="width:200px">
+              <div style="background:#E0E8F0;border-radius:10px;height:10px;overflow:hidden">
+                <div style="background:${pct >= 90 ? '#dc2626' : pct >= 70 ? '#F59E0B' : '#16a34a'};
+                            height:100%;width:${pct}%;transition:width .3s"></div>
+              </div>
+              <div style="text-align:right;font-size:.72rem;color:#6B7280;margin-top:2px">${pct}%</div>
+            </div>` : '<div style="font-size:.78rem;color:#6B7280">Per-unit pricing</div>'}
         </div>
-        <div style="display:flex;gap:18px;align-items:center;font-size:.85rem">
-          <div style="text-align:center"><div style="color:#6B7280;font-size:.7rem;text-transform:uppercase">Status</div>${statusHtml}</div>
-          <div style="text-align:center"><div style="color:#6B7280;font-size:.7rem;text-transform:uppercase">Today</div>${usage.today_calls || 0}</div>
-          <div style="text-align:center"><div style="color:#6B7280;font-size:.7rem;text-transform:uppercase">Total</div>${usage.total_calls || 0}</div>
-          <div style="text-align:center"><div style="color:#6B7280;font-size:.7rem;text-transform:uppercase">Credits</div>${credits}</div>
-        </div>
-        <div class="actions" style="margin-left:14px">
-          <button class="btn btn-ghost btn-sm" onclick="testApiKey('${k.provider}')">Test</button>
-          <button class="btn btn-red btn-sm" onclick="deleteApiKey('${k.provider}')">🗑</button>
+        <div style="background:#fff;border-radius:6px;padding:8px">
+        ${providerKeys.map((k, i) => {
+          const u = k.usage || {};
+          const used = meta.period === "month" ? (u.month_calls || 0) : (u.today_calls || 0);
+          const quota = meta.period === "month"
+                        ? (k.monthly_limit || meta.quota)
+                        : (k.daily_limit || meta.quota);
+          const statusHtml = k.last_status === "ok" ? `<span class="key-status-ok">✓</span>` :
+                             k.last_status === "error" ? `<span class="key-status-err">✗</span>` :
+                             `<span class="key-status-pending">?</span>`;
+          const credits = u.latest_credits != null ? `${u.latest_credits} credits left` : '';
+          const activeBadge = k.is_active
+            ? `<span style="background:#DCFCE7;color:#15803D;padding:2px 6px;border-radius:4px;font-size:.7rem;font-weight:600">ACTIVE</span>`
+            : `<span style="background:#F3F4F6;color:#6B7280;padding:2px 6px;border-radius:4px;font-size:.7rem;font-weight:600">DISABLED</span>`;
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 4px;${i > 0 ? 'border-top:1px solid #EDF2F7' : ''}">
+            <div style="flex:1">
+              <div style="font-size:.85rem">
+                ${statusHtml}
+                <strong>${escapeHtml(k.label || 'Key #' + k.id)}</strong>
+                <span style="margin-left:6px">${activeBadge}</span>
+                ${k.priority !== 0 ? `<span style="margin-left:6px;color:#6B7280;font-size:.75rem">priority ${k.priority}</span>` : ''}
+              </div>
+              <code style="font-size:.72rem;color:#6B7280">${escapeHtml(k.key_masked || "")}</code>
+              <span style="margin-left:10px;font-size:.75rem;color:#6B7280">
+                ${used}${quota ? '/' + quota : ''} ${periodLabel} · ${u.total_calls || 0} all-time
+                ${credits ? ' · ' + credits : ''}
+              </span>
+            </div>
+            <div style="display:flex;gap:4px">
+              <button class="btn btn-ghost btn-sm" onclick="testApiKeyById(${k.id})" title="Test connection">Test</button>
+              <button class="btn btn-ghost btn-sm" onclick="toggleApiKey(${k.id}, ${k.is_active ? 'false' : 'true'})"
+                      title="${k.is_active ? 'Disable' : 'Enable'}">${k.is_active ? '⏸' : '▶'}</button>
+              <button class="btn btn-red btn-sm" onclick="deleteApiKeyById(${k.id})" title="Delete this key">🗑</button>
+            </div>
+          </div>`;
+        }).join("")}
         </div>
       </div>`;
-    }).join("");
+    }
+    list.innerHTML = html;
+  }
+
+  async function testApiKeyById(keyId) {
+    try {
+      const resp = await fetch(`/api/api-keys/id/${keyId}/test`, { method: "POST" });
+      const data = await resp.json();
+      alert(data.ok ? `✓ ${data.message}` + (data.credits ? ` (${data.credits} credits left)` : "")
+                    : `✗ ${data.message}`);
+      loadApiKeys();
+    } catch (e) { alert("Test failed: " + e.message); }
+  }
+
+  async function deleteApiKeyById(keyId) {
+    if (!confirm("Delete this API key?")) return;
+    await fetch(`/api/api-keys/id/${keyId}`, { method: "DELETE" });
+    loadApiKeys();
+  }
+
+  async function toggleApiKey(keyId, makeActive) {
+    await fetch(`/api/api-keys/id/${keyId}`, {
+      method: "PUT", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ is_active: makeActive === 'true' || makeActive === true }),
+    });
+    loadApiKeys();
   }
 
   function openApiKeyModal() {
     $("apiProvider").value = "serper";
     $("apiKey").value = "";
     $("apiCx").value = "";
+    $("apiLabel").value = "";
+    $("apiPriority").value = "0";
+    $("apiQuota").value = "";
     $("apiKeyTestResult").innerHTML = "";
     onApiProviderChange();
     $("apiKeyModal").style.display = "block";
@@ -1468,44 +1738,50 @@
   function onApiProviderChange() {
     const p = $("apiProvider").value;
     $("apiCxField").style.display = p === "google_cse" ? "block" : "none";
+    // Update the quota label
+    const PERIODS = { serper: "Monthly Limit", google_cse: "Daily Limit",
+                      openpagerank: "Daily Limit", semrush: "Monthly Units" };
+    $("apiQuotaLabel").textContent = PERIODS[p] || "Limit";
+    // Suggest the default
+    const DEFAULTS = { serper: 2500, google_cse: 100, openpagerank: 1000, semrush: "" };
+    $("apiQuota").placeholder = "e.g. " + DEFAULTS[p];
   }
 
   async function saveApiKey() {
     const provider = $("apiProvider").value;
     const api_key = $("apiKey").value.trim();
     if (!api_key) { alert("API key required"); return; }
-    const extra_data = provider === "google_cse"
-      ? { cx: $("apiCx").value.trim() } : {};
+
+    const label = $("apiLabel").value.trim() || null;
+    const priority = parseInt($("apiPriority").value) || 0;
+    const quotaRaw = $("apiQuota").value.trim();
+    const quotaVal = quotaRaw ? parseInt(quotaRaw) : null;
+
+    // Determine if this provider's limit is monthly or daily
+    const isMonthly = ["serper", "semrush"].includes(provider);
+    const extra_data = provider === "google_cse" ? { cx: $("apiCx").value.trim() } : {};
+    const body = {
+      provider, api_key, label, priority,
+      monthly_limit: isMonthly ? quotaVal : null,
+      daily_limit:   isMonthly ? null : quotaVal,
+      extra_data,
+    };
+
     try {
-      await fetch("/api/api-keys", {
+      const saveResp = await fetch("/api/api-keys", {
         method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ provider, api_key, extra_data }),
+        body: JSON.stringify(body),
       });
-      // Auto-test
-      const test = await fetch(`/api/api-keys/${provider}/test`, { method: "POST" });
+      const saveData = await saveResp.json();
+      // Auto-test the new key
+      const test = await fetch(`/api/api-keys/id/${saveData.id}/test`, { method: "POST" });
       const tdata = await test.json();
       $("apiKeyTestResult").innerHTML = tdata.ok
-        ? `<div class="success-box">✓ ${escapeHtml(tdata.message)}</div>`
+        ? `<div class="success-box">✓ ${escapeHtml(tdata.message)}${tdata.credits ? ' · ' + tdata.credits + ' credits left' : ''}</div>`
         : `<div class="error-box" style="display:block">✗ ${escapeHtml(tdata.message)}</div>`;
       loadApiKeys();
       if (tdata.ok) setTimeout(() => closeModal("apiKeyModal"), 1500);
     } catch (e) { alert("Save failed: " + e.message); }
-  }
-
-  async function testApiKey(provider) {
-    try {
-      const resp = await fetch(`/api/api-keys/${provider}/test`, { method: "POST" });
-      const data = await resp.json();
-      alert(data.ok ? `✓ ${data.message}` + (data.credits ? ` (${data.credits} credits left)` : "")
-                    : `✗ ${data.message}`);
-      loadApiKeys();
-    } catch (e) { alert("Test failed: " + e.message); }
-  }
-
-  async function deleteApiKey(provider) {
-    if (!confirm(`Delete ${provider} API key?`)) return;
-    await fetch(`/api/api-keys/${provider}`, { method: "DELETE" });
-    loadApiKeys();
   }
 
   // ============================================================
@@ -1632,9 +1908,15 @@
           }).join("")}
         </ol>`;
 
+    const gButton = _lastSearchKeyword
+      ? googleLinkButton(_lastSearchKeyword, _lastSearchRegion,
+                         `View live SERP (${_lastSearchRegion.toUpperCase()})`)
+      : "";
     $("verifyContent").innerHTML = `
-      <div style="background:${bg};color:${color};padding:14px 18px;border-radius:8px;font-weight:600;margin-bottom:18px">
-        ${escapeHtml(data.summary)}
+      <div style="background:${bg};color:${color};padding:14px 18px;border-radius:8px;font-weight:600;margin-bottom:18px;
+                  display:flex;justify-content:space-between;align-items:center;gap:14px">
+        <span>${escapeHtml(data.summary)}</span>
+        ${gButton}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;font-size:.85rem">
         <div style="background:#F7FAFD;padding:12px;border-radius:6px">
@@ -1655,6 +1937,416 @@
         <p style="font-size:.78rem;color:#666;margin:0 0 8px">Green-highlighted rows contain your domain.</p>
         <div style="background:#FAFBFC;padding:12px;border-radius:6px;border:1px solid #E0E8F0">${headingsHtml}</div>
       </div>`;
+  }
+
+  // ============================================================
+  // COMPETITORS VIEW
+  // ============================================================
+  let _competitorKeywords = [];
+
+  function onCompetitorsCompanyChange() {
+    loadKeywordFilter();
+    loadCompetitors();
+  }
+
+  function loadCompetitorsCompanies() {
+    // Populate company dropdown
+    const sel = $("competitorsCompanySelect");
+    const current = sel.value;
+    sel.innerHTML = '<option value="">— Select a company —</option>';
+    _companies.forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = `${c.name} (${c.domain})`;
+      sel.appendChild(opt);
+    });
+    if (current) sel.value = current;
+    if (sel.value) {
+      loadKeywordFilter();
+      loadCompetitors();
+    }
+  }
+
+  async function loadKeywordFilter() {
+    const cid = $("competitorsCompanySelect").value;
+    if (!cid) {
+      $("keywordFilterList").innerHTML = "";
+      _competitorKeywords = [];
+      return;
+    }
+    try {
+      const data = await (await fetch(`/api/companies/${cid}/keywords`)).json();
+      _competitorKeywords = data.keywords || [];
+      renderKeywordFilter();
+    } catch (e) { console.error("Keyword filter load:", e); }
+  }
+
+  function renderKeywordFilter() {
+    const list = $("keywordFilterList");
+    if (_competitorKeywords.length === 0) {
+      list.innerHTML = `<p style="color:#9CA3AF;font-size:.8rem;text-align:center;padding:14px">
+        No keywords yet for this company. Run a search first.
+      </p>`;
+      return;
+    }
+    // Deduplicate by keyword text (multiple searches of same keyword)
+    const seen = new Set();
+    const uniq = [];
+    _competitorKeywords.forEach(k => {
+      const key = `${k.id}|${k.keyword}|${k.location}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniq.push(k);
+      }
+    });
+    list.innerHTML = uniq.map(k => `
+      <label style="display:block;padding:4px 2px;font-size:.85rem;cursor:pointer">
+        <input type="checkbox" data-kw-id="${k.id}" style="margin-right:6px;vertical-align:middle">
+        <strong>${escapeHtml(k.keyword)}</strong>
+        <span style="color:#6B7280">(${(k.location || 'us').toUpperCase()}, ${k.result_count} results)</span>
+      </label>
+    `).join("");
+  }
+
+  function selectAllKeywords(state) {
+    document.querySelectorAll('#keywordFilterList input[data-kw-id]')
+      .forEach(cb => cb.checked = state);
+  }
+
+  function getSelectedKeywordIds() {
+    return Array.from(document.querySelectorAll('#keywordFilterList input[data-kw-id]:checked'))
+                .map(cb => cb.dataset.kwId);
+  }
+
+  async function loadCompetitors() {
+    const cid = $("competitorsCompanySelect").value;
+    if (!cid) {
+      $("competitorsListCard").style.display = "none";
+      $("coverageGapCard").style.display = "none";
+      $("competitorsFilters").style.display = "none";
+      $("competitorsEmpty").style.display = "block";
+      return;
+    }
+    $("competitorsFilters").style.display = "block";
+    const minApp = $("minAppearances").value || 2;
+    const kwIds = getSelectedKeywordIds();
+    let url = `/api/competitors/${cid}?min_appearances=${minApp}`;
+    if (kwIds.length > 0) url += `&keyword_ids=${kwIds.join(",")}`;
+    try {
+      const data = await (await fetch(url)).json();
+      renderCompetitors(data);
+    } catch (e) { console.error("Competitors load:", e); }
+  }
+
+  function renderCompetitors(data) {
+    const comps = data.competitors || [];
+    $("competitorsEmpty").style.display = "none";
+    $("coverageGapCard").style.display = "none";
+    $("competitorsListCard").style.display = "block";
+
+    // Filter summary
+    const filterIds = data.filtered_by_keywords || [];
+    if (filterIds.length > 0) {
+      const filterKws = _competitorKeywords
+        .filter(k => filterIds.includes(k.id))
+        .map(k => k.keyword);
+      $("competitorsFilterSummary").innerHTML =
+        `🔎 Filtered by ${filterIds.length} keyword${filterIds.length > 1 ? 's' : ''}: ` +
+        filterKws.slice(0, 3).map(k =>
+          `<span style="background:#DBEAFE;color:#1D4ED8;padding:2px 6px;border-radius:3px;margin-right:4px">${escapeHtml(k)}</span>`
+        ).join("") + (filterKws.length > 3 ? `<span style="color:#6B7280">+${filterKws.length - 3} more</span>` : "");
+    } else {
+      $("competitorsFilterSummary").innerHTML =
+        `<span style="color:#6B7280">All keywords (${_competitorKeywords.length} searches)</span>`;
+    }
+
+    if (comps.length === 0) {
+      $("competitorsTable").innerHTML = `<p style="color:#6B7280;padding:14px">
+        No competitors discovered yet for <strong>${escapeHtml(data.company.name)}</strong>
+        ${filterIds.length > 0 ? ' with the selected keyword filter' : ''}.
+        Run more listicle searches under this company to build the competitor database.
+      </p>`;
+      return;
+    }
+
+    $("competitorsTable").innerHTML = `<table style="width:100%;font-size:.88rem">
+      <thead style="background:#1F4E78;color:#fff">
+        <tr>
+          <th style="padding:10px;text-align:left">Competitor Domain</th>
+          <th style="padding:10px;text-align:center">Co-Appearances</th>
+          <th style="padding:10px;text-align:center">Avg Position</th>
+          <th style="padding:10px;text-align:left">Sample Keywords</th>
+          <th style="padding:10px;text-align:center">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+      ${comps.map(c => `
+        <tr style="border-bottom:1px solid #EDF2F7">
+          <td style="padding:10px"><strong>${escapeHtml(c.domain)}</strong></td>
+          <td style="padding:10px;text-align:center">
+            <span class="badge badge-listicle">${c.co_appearances}</span>
+          </td>
+          <td style="padding:10px;text-align:center">
+            ${c.avg_position != null
+              ? `<span class="pos-badge ${c.avg_position <= 3 ? 'pos-gold' : c.avg_position <= 10 ? 'pos-silver' : 'pos-bronze'}">${c.avg_position}</span>`
+              : '<span style="color:#aaa">—</span>'}
+          </td>
+          <td style="padding:10px;font-size:.78rem;color:#6B7280">
+            ${(c.sample_keywords || []).map(s => `<span style="background:#F3F4F6;padding:2px 6px;border-radius:3px;margin-right:4px">${escapeHtml(s)}</span>`).join("")}
+          </td>
+          <td style="padding:10px;text-align:center">
+            <button class="btn btn-primary btn-sm"
+                    onclick="loadCoverageGaps('${data.company.id}','${c.domain.replace(/'/g, "\\'")}', '${escapeHtml(data.company.name).replace(/'/g, "\\'")}')">
+              View Gaps
+            </button>
+          </td>
+        </tr>`).join("")}
+      </tbody></table>`;
+  }
+
+  async function loadCoverageGaps(companyId, competitorDomain, companyName) {
+    try {
+      const data = await (await fetch(
+        `/api/competitors/${companyId}/gaps?competitor_domain=${encodeURIComponent(competitorDomain)}`
+      )).json();
+      renderCoverageGaps(data, companyName);
+    } catch (e) { alert("Coverage gap load failed: " + e.message); }
+  }
+
+  function renderCoverageGaps(data, companyName) {
+    $("coverageGapTitle").textContent =
+      `Coverage Gap: ${data.competitor_domain} vs ${data.company_name || companyName}`;
+
+    const gaps = data.gap_listicles || [];
+    const totalCompListicles = data.competitor_listicles_count || 0;
+    const yourListicles = data.your_listicles_count || 0;
+
+    $("coverageGapBody").innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px">
+        <div class="stat-card" style="border-left-color:#7C3AED">
+          <div class="label">${escapeHtml(data.competitor_domain)} on</div>
+          <div class="value">${totalCompListicles}</div>
+          <div style="font-size:.7rem;color:#6B7280">listicles</div>
+        </div>
+        <div class="stat-card" style="border-left-color:#16A34A">
+          <div class="label">${escapeHtml(data.company_name || companyName)} on</div>
+          <div class="value">${yourListicles}</div>
+          <div style="font-size:.7rem;color:#6B7280">listicles (Listed status)</div>
+        </div>
+        <div class="stat-card" style="border-left-color:#F59E0B">
+          <div class="label">Gap (outreach targets)</div>
+          <div class="value">${gaps.length}</div>
+          <div style="font-size:.7rem;color:#6B7280">pages to pursue</div>
+        </div>
+      </div>
+      ${gaps.length === 0
+        ? `<p style="color:#16a34a;padding:14px;background:#DCFCE7;border-radius:6px;font-weight:600">
+            ✓ No gaps! You're listed everywhere ${escapeHtml(data.competitor_domain)} is.
+           </p>`
+        : `<div style="background:#FFF7E6;padding:10px;border-radius:6px;font-size:.85rem;color:#92400E;margin-bottom:12px">
+            💡 These ${gaps.length} listicles list <strong>${escapeHtml(data.competitor_domain)}</strong> but NOT you — your outreach targets.
+          </div>
+          <table style="width:100%;font-size:.85rem">
+            <thead style="background:#F3F4F6">
+              <tr>
+                <th style="padding:8px;text-align:left">Listicle URL</th>
+                <th style="padding:8px">Competitor Pos</th>
+                <th style="padding:8px;text-align:left">Found Via Keyword</th>
+                <th style="padding:8px">↗</th>
+              </tr>
+            </thead>
+            <tbody>
+            ${gaps.map(g => `<tr style="border-bottom:1px solid #EDF2F7">
+              <td style="padding:8px;max-width:380px;overflow:hidden;text-overflow:ellipsis">
+                <a href="${escapeHtml(g.url)}" target="_blank" class="domain-link" style="font-size:.82rem">${escapeHtml(g.url)}</a>
+              </td>
+              <td style="padding:8px;text-align:center">
+                <span class="pos-badge ${g.comp_pos <= 3 ? 'pos-gold' : g.comp_pos <= 10 ? 'pos-silver' : 'pos-bronze'}">${g.comp_pos}</span>
+              </td>
+              <td style="padding:8px;color:#6B7280">${escapeHtml(g.keyword)}</td>
+              <td style="padding:8px;text-align:center">
+                <a href="${escapeHtml(g.url)}" target="_blank" class="open-link">↗</a>
+                <button onclick="openListicleDetail(${g.id})" style="background:none;border:none;cursor:pointer;color:#2E75B6;margin-left:6px" title="See all companies on this page">📋</button>
+              </td>
+            </tr>`).join("")}
+            </tbody>
+          </table>`}
+    `;
+    $("coverageGapCard").style.display = "block";
+    $("coverageGapCard").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  // ============================================================
+  // SERP COMPARISON
+  // ============================================================
+  async function compareSERP(searchId) {
+    $("compareModal").style.display = "block";
+    $("compareContent").innerHTML = `<div style="text-align:center;padding:40px">
+      <div class="spinner"></div><p>Fetching fresh SERP (1 API call)...</p></div>`;
+
+    try {
+      const resp = await fetch(`/api/search/${searchId}/compare`, { method: "POST" });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || resp.statusText);
+      }
+      const data = await resp.json();
+      renderCompareResult(data);
+    } catch (e) {
+      $("compareContent").innerHTML =
+        `<div class="error-box" style="display:block">Compare failed: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function renderCompareResult(data) {
+    const newE = data.new_entries || [];
+    const lost = data.lost_entries || [];
+    const shifts = data.shifts || [];
+    const orig = data.original_timestamp ? new Date(data.original_timestamp).toLocaleString() : "—";
+    const gButton = googleLinkButton(data.keyword, data.region,
+                                      `Open live Google (${data.region.toUpperCase()})`);
+
+    const cached = (data.cached_results || []).slice(0, 10);
+    const fresh = data.fresh_results || [];
+
+    const rowFor = (item, fromCached) => {
+      const dom = item.domain || (item.url || "").replace(/^https?:\/\/(www\.)?/, "").split("/")[0];
+      const url = item.url || "";
+      const pos = fromCached ? item.position : item.position;
+      // Highlight changes
+      const cachedUrls = new Set(cached.map(c => c.url));
+      const freshUrls  = new Set(fresh.map(f => f.url));
+      let bgColor = "";
+      let badge   = "";
+      if (fromCached && !freshUrls.has(url)) {
+        bgColor = "background:#FEE2E2;"; badge = `<span style="background:#dc2626;color:#fff;padding:1px 5px;border-radius:3px;font-size:.65rem;margin-left:4px">LOST</span>`;
+      } else if (!fromCached && !cachedUrls.has(url)) {
+        bgColor = "background:#DCFCE7;"; badge = `<span style="background:#16a34a;color:#fff;padding:1px 5px;border-radius:3px;font-size:.65rem;margin-left:4px">NEW</span>`;
+      } else if (fromCached) {
+        // Position shift
+        const freshMatch = fresh.find(f => f.url === url);
+        if (freshMatch && freshMatch.position !== item.position) {
+          bgColor = "background:#FFF7E6;";
+          const delta = item.position - freshMatch.position;
+          const arrow = delta > 0 ? "↑" : "↓";
+          const color = delta > 0 ? "#16a34a" : "#dc2626";
+          badge = `<span style="color:${color};font-weight:700;margin-left:4px">${arrow}${Math.abs(delta)}</span>`;
+        }
+      }
+      return `<tr style="${bgColor}border-bottom:1px solid #EDF2F7">
+        <td style="padding:6px 8px;text-align:center;font-weight:700">${pos}</td>
+        <td style="padding:6px 8px;font-size:.82rem">
+          <strong>${escapeHtml(dom)}</strong>${badge}<br>
+          <a href="${escapeHtml(url)}" target="_blank" style="color:#6B7280;font-size:.72rem">${escapeHtml(url.substring(0,55))}…</a>
+        </td>
+      </tr>`;
+    };
+
+    $("compareContent").innerHTML = `
+      <div style="background:#F7FAFD;padding:12px 14px;border-radius:6px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <strong style="color:#1F4E78">"${escapeHtml(data.keyword)}"</strong>
+          <span style="color:#6B7280;font-size:.85rem">  ·  ${data.region.toUpperCase()}  ·  cached on ${orig}</span>
+        </div>
+        ${gButton}
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px">
+        <div class="stat-card" style="border-left-color:#16a34a">
+          <div class="label">New on Page 1</div>
+          <div class="value">${newE.length}</div>
+        </div>
+        <div class="stat-card" style="border-left-color:#dc2626">
+          <div class="label">Lost from Page 1</div>
+          <div class="value">${lost.length}</div>
+        </div>
+        <div class="stat-card" style="border-left-color:#F59E0B">
+          <div class="label">Position Shifts</div>
+          <div class="value">${shifts.length}</div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div>
+          <h4 style="color:#6B7280;font-size:.85rem;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">
+            Cached (when you searched)
+          </h4>
+          <table style="width:100%;font-size:.85rem;border:1px solid #E0E8F0;border-radius:6px;overflow:hidden">
+            <thead style="background:#F3F4F6"><tr><th style="padding:6px;width:40px">#</th><th style="padding:6px;text-align:left">Domain / URL</th></tr></thead>
+            <tbody>${cached.length === 0 ? '<tr><td colspan="2" style="padding:14px;text-align:center;color:#9CA3AF">No cached top-10</td></tr>'
+                                          : cached.map(c => rowFor(c, true)).join("")}</tbody>
+          </table>
+        </div>
+        <div>
+          <h4 style="color:#6B7280;font-size:.85rem;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">
+            Fresh (now — 1 API call)
+          </h4>
+          <table style="width:100%;font-size:.85rem;border:1px solid #E0E8F0;border-radius:6px;overflow:hidden">
+            <thead style="background:#F3F4F6"><tr><th style="padding:6px;width:40px">#</th><th style="padding:6px;text-align:left">Domain / URL</th></tr></thead>
+            <tbody>${fresh.length === 0 ? '<tr><td colspan="2" style="padding:14px;text-align:center;color:#9CA3AF">No fresh results</td></tr>'
+                                        : fresh.map(c => rowFor(c, false)).join("")}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="margin-top:14px;padding:10px 14px;background:#F0F4F8;border-radius:6px;font-size:.78rem;color:#5A6A7E">
+        🟩 Green = NEW on page 1  ·  🟥 Red = LOST from page 1  ·  🟨 Yellow = position changed (arrow shows direction)
+      </div>
+    `;
+  }
+
+  // ============================================================
+  // LISTICLE DEEP-DIVE MODAL
+  // ============================================================
+  async function openListicleDetail(resultId) {
+    $("listicleModal").style.display = "block";
+    $("listicleModalContent").innerHTML = `<div style="text-align:center;padding:30px">
+      <div class="spinner"></div><p>Loading companies...</p></div>`;
+    try {
+      const data = await (await fetch(`/api/listicles/${resultId}/companies`)).json();
+      const comps = data.companies || [];
+      if (comps.length === 0) {
+        $("listicleModalContent").innerHTML = `<p style="color:#6B7280;padding:20px;text-align:center">
+          No companies extracted from this page. The listicle may not have a numbered list structure
+          or hasn't been re-fetched since this feature was added.
+        </p>`;
+        return;
+      }
+      $("listicleModalContent").innerHTML = `
+        <p style="font-size:.85rem;color:#6B7280;margin-bottom:12px">
+          ${comps.length} companies found on this listicle
+        </p>
+        <table style="width:100%;font-size:.88rem">
+          <thead style="background:#1F4E78;color:#fff">
+            <tr>
+              <th style="padding:8px;text-align:center">Pos</th>
+              <th style="padding:8px;text-align:left">Company</th>
+              <th style="padding:8px;text-align:left">Domain</th>
+              <th style="padding:8px">Link Type</th>
+            </tr>
+          </thead>
+          <tbody>
+          ${comps.map(c => `<tr style="border-bottom:1px solid #EDF2F7">
+            <td style="padding:8px;text-align:center">
+              <span class="pos-badge ${c.position_on_page <= 3 ? 'pos-gold' : c.position_on_page <= 10 ? 'pos-silver' : 'pos-bronze'}">${c.position_on_page}</span>
+            </td>
+            <td style="padding:8px"><strong>${escapeHtml(c.company_name || '—')}</strong></td>
+            <td style="padding:8px">
+              ${c.href_url
+                ? `<a href="${escapeHtml(c.href_url)}" target="_blank" class="domain-link">${escapeHtml(c.domain || '')}</a>`
+                : `<span style="color:#6B7280">${escapeHtml(c.domain || '—')}</span>`}
+            </td>
+            <td style="padding:8px;text-align:center">
+              ${c.link_type === 'Backlink'
+                ? '<span class="badge badge-valid">Backlink</span>'
+                : '<span class="badge badge-competitor">Mention</span>'}
+            </td>
+          </tr>`).join("")}
+          </tbody>
+        </table>`;
+    } catch (e) {
+      $("listicleModalContent").innerHTML = `<div class="error-box" style="display:block">Error: ${escapeHtml(e.message)}</div>`;
+    }
   }
 
   // ============================================================

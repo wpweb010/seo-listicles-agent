@@ -150,72 +150,71 @@ def to_int(v) -> int:
 
 # ── Credentials ───────────────────────────────────────────────────────────────
 
-def _db_key(provider: str) -> dict:
-    """Get an API key from DB (returns None if missing). Falls back to .env."""
+def _db_active_key(provider: str) -> dict:
+    """Get the active (quota-aware) API key for a provider. Returns None if missing."""
     try:
-        from database import get_api_key
-        return get_api_key(provider)
+        from database import get_active_api_key
+        return get_active_api_key(provider)
     except Exception:
         return None
 
 
-def _resolve_key(provider: str, env_name: str) -> str:
-    """Try DB first, then .env. Returns the api_key string or empty string."""
-    row = _db_key(provider)
+def _resolve_key_row(provider: str, env_name: str) -> tuple:
+    """
+    Returns (api_key, key_id, extra_data).
+    Tries DB first (quota-aware), falls back to .env.
+    """
+    row = _db_active_key(provider)
     if row and row.get("api_key"):
-        return row["api_key"]
-    return os.environ.get(env_name, "")
-
-
-def _resolve_extra(provider: str, field: str, env_name: str = None) -> str:
-    """Get an extra field (e.g. CSE cx) from DB extra_data or .env fallback."""
-    row = _db_key(provider)
-    if row:
-        extra = row.get("extra_data") or {}
-        if extra.get(field):
-            return extra[field]
-    if env_name:
-        return os.environ.get(env_name, "")
-    return ""
+        return row["api_key"], row.get("id"), (row.get("extra_data") or {})
+    env_key = os.environ.get(env_name, "")
+    return env_key, None, {}
 
 
 def get_creds(mode: str) -> dict:
     if mode == "semrush":
-        key = _resolve_key("semrush", "SEMRUSH_API_KEY")
+        key, key_id, _ = _resolve_key_row("semrush", "SEMRUSH_API_KEY")
         if not key:
             raise ValueError("Semrush API key not configured (Settings → API Keys, or SEMRUSH_API_KEY in .env).")
-        return {"mode": "semrush", "semrush": key}
+        return {"mode": "semrush", "semrush": key, "semrush_key_id": key_id}
 
     # Free mode: prefer Serper.dev, fall back to Google CSE
-    serper_key = _resolve_key("serper", "SERPER_API_KEY")
+    serper_key, serper_id, _ = _resolve_key_row("serper", "SERPER_API_KEY")
+    opr_key, opr_id, _       = _resolve_key_row("openpagerank", "OPENPAGERANK_KEY")
     if serper_key:
         return {
-            "mode":     "free",
-            "provider": "serper",
-            "serper":   serper_key,
-            "opr_key":  _resolve_key("openpagerank", "OPENPAGERANK_KEY"),
+            "mode":           "free",
+            "provider":       "serper",
+            "serper":         serper_key,
+            "serper_key_id":  serper_id,
+            "opr_key":        opr_key,
+            "opr_key_id":     opr_id,
         }
-    cse_key = _resolve_key("google_cse", "GOOGLE_CSE_KEY")
-    cse_cx  = _resolve_extra("google_cse", "cx", "GOOGLE_CSE_CX")
+    cse_key, cse_id, cse_extra = _resolve_key_row("google_cse", "GOOGLE_CSE_KEY")
+    cse_cx = cse_extra.get("cx") or os.environ.get("GOOGLE_CSE_CX", "")
     if not cse_key or not cse_cx:
         raise ValueError(
             "No SERP credentials configured. Open Settings → API Keys and add a "
             "Serper.dev key (recommended) OR Google CSE key + Search Engine ID."
         )
     return {
-        "mode":     "free",
-        "provider": "cse",
-        "cse_key":  cse_key,
-        "cse_cx":   cse_cx,
-        "opr_key":  _resolve_key("openpagerank", "OPENPAGERANK_KEY"),
+        "mode":         "free",
+        "provider":     "cse",
+        "cse_key":      cse_key,
+        "cse_key_id":   cse_id,
+        "cse_cx":       cse_cx,
+        "opr_key":      opr_key,
+        "opr_key_id":   opr_id,
     }
 
 
-def _log_api(provider: str, success: bool = True, credits: int = None, meta: dict = None):
-    """Log an API call (best-effort)."""
+def _log_api(provider: str, success: bool = True, credits: int = None,
+             meta: dict = None, api_key_id: int = None):
+    """Log an API call (best-effort) — attaches to specific key when known."""
     try:
         from database import log_api_call
-        log_api_call(provider, success=success, credits_remaining=credits, metadata=meta)
+        log_api_call(provider, success=success, credits_remaining=credits,
+                     metadata=meta, api_key_id=api_key_id)
     except Exception:
         pass
 
@@ -243,14 +242,17 @@ def fetch_serp_page(keyword: str, creds: dict, page_num: int, region: str) -> li
             )
             data = r.json()
         except requests.RequestException as e:
-            _log_api("serper", success=False, meta={"error": str(e)})
+            _log_api("serper", success=False, meta={"error": str(e)},
+                     api_key_id=creds.get("serper_key_id"))
             raise RuntimeError(f"Serper.dev network error: {e}")
         if "error" in data:
-            _log_api("serper", success=False, meta={"error": data.get("error")})
+            _log_api("serper", success=False, meta={"error": data.get("error")},
+                     api_key_id=creds.get("serper_key_id"))
             raise RuntimeError(f"Serper.dev error: {data.get('error', data)}")
         # Capture credits if Serper returns them in the response
         credits = data.get("credits") or data.get("credits_remaining")
-        _log_api("serper", success=True, credits=credits, meta={"page": page_num})
+        _log_api("serper", success=True, credits=credits, meta={"page": page_num},
+                 api_key_id=creds.get("serper_key_id"))
         organic = data.get("organic", [])
         results = []
         for i, item in enumerate(organic):
@@ -279,18 +281,21 @@ def fetch_serp_page(keyword: str, creds: dict, page_num: int, region: str) -> li
             )
             data = r.json()
         except requests.RequestException as e:
-            _log_api("google_cse", success=False, meta={"error": str(e)})
+            _log_api("google_cse", success=False, meta={"error": str(e)},
+                     api_key_id=creds.get("cse_key_id"))
             raise RuntimeError(f"Google CSE network error: {e}")
         if "error" in data:
             msg = data["error"].get("message", "")
-            _log_api("google_cse", success=False, meta={"error": msg})
+            _log_api("google_cse", success=False, meta={"error": msg},
+                     api_key_id=creds.get("cse_key_id"))
             if "blocked" in msg.lower() or "access" in msg.lower():
                 raise RuntimeError(
                     "Custom Search API blocked. Enable billing at console.cloud.google.com "
                     "or switch to Serper.dev (Settings → API Keys)."
                 )
             raise RuntimeError(f"Google CSE error: {msg[:200]}")
-        _log_api("google_cse", success=True, meta={"page": page_num})
+        _log_api("google_cse", success=True, meta={"page": page_num},
+                 api_key_id=creds.get("cse_key_id"))
         items = data.get("items", [])
         results = []
         for i, it in enumerate(items):
@@ -337,7 +342,7 @@ def fetch_serp_page(keyword: str, creds: dict, page_num: int, region: str) -> li
 
 # ── Authority ─────────────────────────────────────────────────────────────────
 
-def fetch_openpagerank(domains: list, opr_key: str) -> dict:
+def fetch_openpagerank(domains: list, opr_key: str, opr_key_id: int = None) -> dict:
     """Open PageRank bulk lookup — free authority proxy, 0-100 scaled."""
     result = {}
     if not opr_key:
@@ -360,9 +365,11 @@ def fetch_openpagerank(domains: list, opr_key: str) -> dict:
                     result[d] = round(float(rank) * 10, 1)
                 except (ValueError, TypeError):
                     result[d] = ""
-            _log_api("openpagerank", success=True, meta={"batch": len(batch)})
+            _log_api("openpagerank", success=True, meta={"batch": len(batch)},
+                     api_key_id=opr_key_id)
         except requests.RequestException as e:
-            _log_api("openpagerank", success=False, meta={"error": str(e)})
+            _log_api("openpagerank", success=False, meta={"error": str(e)},
+                     api_key_id=opr_key_id)
         time.sleep(REQUEST_DELAY)
     return result
 
@@ -614,6 +621,125 @@ def keyword_density(html: str, keyword: str) -> float:
 
 
 # ── Domain detection on listicle pages ────────────────────────────────────
+
+def extract_all_companies(html: str, page_url: str) -> list:
+    """
+    Extract ALL companies listed on a listicle page (not just one searched domain).
+    Returns ordered list of {position, company_name, domain, link_type, href_url}.
+
+    Used to build a competitor database from listicle pages we already fetch.
+    """
+    if not html:
+        return []
+
+    # Skip if bot-protected
+    head = html[:5000].lower()
+    if len(html) < 15000 and any(s in head for s in
+        ("please wait for verification", "captcha", "cf-please-wait", "checking your browser")):
+        return []
+
+    page_domain_self = urllib.parse.urlparse(page_url).netloc.lower().replace("www.", "")
+    skip_domains = {
+        "facebook.com", "twitter.com", "x.com", "linkedin.com", "instagram.com",
+        "youtube.com", "youtu.be", "google.com", "googleapis.com", "gstatic.com",
+        "gravatar.com", "wp.com", "wordpress.org", "wordpress.com", "cdnjs.com",
+        "jsdelivr.net", "unpkg.com", "cloudflare.com", "doubleclick.net",
+        "googletagmanager.com", "googleadservices.com", "fonts.googleapis.com",
+        "fonts.gstatic.com", "schema.org", "w3.org", "amazon.com",
+        page_domain_self,
+    }
+
+    # Strategy A: Numbered headings — most reliable for listicles
+    # Match "<hN>...1. Company Name...</hN>" with possible nested tags
+    h_pattern = re.compile(r'<(h[1-6])[^>]*>(.*?)</\1>', re.I | re.S)
+    headings = h_pattern.findall(html)
+
+    # Build numbered headings list (with their position, content, raw_block)
+    numbered = []
+    raw_blocks_by_heading = {}
+    for tag, content in headings:
+        clean = re.sub(r'<[^>]+>', '', content).strip()
+        m = re.match(r'^\s*(\d{1,2})[\.\)\:\s]+(.*)', clean)
+        if m:
+            num = int(m.group(1))
+            company_text = m.group(2).strip()
+            if 1 <= num <= 50 and 2 <= len(company_text) <= 80:
+                numbered.append((num, company_text, content))
+
+    def extract_href_from_block(raw_html: str) -> str:
+        """Find first external company-like href in a heading or surrounding block."""
+        for m in re.finditer(r'<a[^>]+href=["\']https?://([^/"\']+)([^"\']*)["\']', raw_html, re.I):
+            d = m.group(1).lower().replace("www.", "")
+            if any(skip in d for skip in skip_domains):
+                continue
+            return "https://" + m.group(1) + m.group(2)
+        return ""
+
+    # Walk through HTML and split into "sections" by H2/H3, then for each numbered heading
+    # look at THAT heading's content + the text immediately after it for the company link
+    out = []
+    if numbered:
+        # For each numbered heading, find the link nearby
+        # Slice HTML between this heading start and the next heading start
+        section_pattern = re.compile(
+            r'<(h[1-6])[^>]*>(.*?)</\1>(.*?)(?=<h[1-6][^>]*>|$)',
+            re.I | re.S
+        )
+        section_idx = 0
+        sections = list(section_pattern.finditer(html))
+
+        for num, company_text, heading_content in numbered:
+            # Find matching section
+            section_block = ""
+            for sec in sections:
+                sec_clean = re.sub(r'<[^>]+>', '', sec.group(2)).strip()
+                if sec_clean.startswith(str(num)) and company_text[:20].lower() in sec_clean.lower():
+                    section_block = sec.group(2) + " " + sec.group(3)[:2000]
+                    break
+            if not section_block:
+                section_block = heading_content
+
+            href = extract_href_from_block(section_block)
+            domain = ""
+            link_type = "Mention"
+            if href:
+                try:
+                    domain = urllib.parse.urlparse(href).netloc.lower().replace("www.", "")
+                    link_type = "Backlink"
+                except Exception:
+                    pass
+
+            # Clean company name (remove year suffix like "(2026)" or trailing punctuation)
+            cn = re.sub(r'\s*[\(\[][^\)\]]*[\)\]]\s*$', '', company_text).strip()
+            cn = re.sub(r'[\:\-–—]\s*.*$', '', cn).strip() if "—" in cn or " - " in cn else cn
+
+            out.append({
+                "position":     num,
+                "company_name": cn[:100],
+                "domain":       domain,
+                "link_type":    link_type,
+                "href_url":     href,
+            })
+        return out
+
+    # Strategy B: Numbered <strong>/<b> patterns — used by some listicles
+    strong_pattern = re.compile(
+        r'<(strong|b)[^>]*>\s*(\d{1,2})[\.\)\:\s]+([^<]+)</\1>',
+        re.I
+    )
+    for m in strong_pattern.findall(html):
+        num = int(m[1])
+        cn = m[2].strip()
+        if 1 <= num <= 50 and 2 <= len(cn) <= 80:
+            out.append({
+                "position":     num,
+                "company_name": cn[:100],
+                "domain":       "",
+                "link_type":    "Mention",
+                "href_url":     "",
+            })
+    return out
+
 
 def verify_url_diagnostic(url: str, domain: str) -> dict:
     """
@@ -1387,7 +1513,7 @@ def run(
     if mode == "free" and creds.get("opr_key"):
         log("-- Fetching Open PageRank authority scores...")
         domains  = list(dict.fromkeys(item["domain"] for item, _, _ in all_items))
-        opr_data = fetch_openpagerank(domains, creds["opr_key"])
+        opr_data = fetch_openpagerank(domains, creds["opr_key"], opr_key_id=creds.get("opr_key_id"))
     else:
         opr_data = {}
 
@@ -1447,6 +1573,17 @@ def run(
             r["Keyword Density %"] = keyword_density(html, keyword)
             if find_contacts:
                 html_cache[r["URL"]] = html
+
+            # Extract ALL companies on this listicle (powers competitor intelligence).
+            # Only run for actual listicle-type pages (skip pure service pages).
+            if r.get("Category") == "listicle":
+                try:
+                    extracted = extract_all_companies(html, r["URL"])
+                    if extracted:
+                        r["_extracted_companies"] = extracted
+                        log(f"       extracted {len(extracted)} companies on page")
+                except Exception as _e:
+                    pass  # best-effort, don't break the search
 
             # If domain provided, search for it on this page (even if content validation failed)
             if domain:

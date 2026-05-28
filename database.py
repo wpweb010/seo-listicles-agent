@@ -102,25 +102,34 @@ def init_db():
         )
     """)
 
-    # API keys — user-managed, overrides .env values
+    # API keys — multi-key per provider with quota-aware rotation
     c.execute("""
         CREATE TABLE IF NOT EXISTS api_keys (
-            provider TEXT PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider TEXT NOT NULL,
             api_key TEXT NOT NULL,
+            label TEXT,
+            is_active INTEGER DEFAULT 1,
+            priority INTEGER DEFAULT 0,
+            monthly_limit INTEGER,
+            daily_limit INTEGER,
             extra_data TEXT,
             last_tested TEXT,
             last_status TEXT,
             usage_count INTEGER DEFAULT 0,
             created_at TEXT,
-            updated_at TEXT
+            updated_at TEXT,
+            UNIQUE(provider, api_key)
         )
     """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_apikeys_provider ON api_keys(provider, priority, is_active)")
 
     # API usage log — track every API call for usage reporting
     c.execute("""
         CREATE TABLE IF NOT EXISTS api_usage_log (
             id INTEGER PRIMARY KEY,
             provider TEXT NOT NULL,
+            api_key_id INTEGER,
             timestamp TEXT,
             success INTEGER DEFAULT 1,
             credits_remaining INTEGER,
@@ -129,6 +138,24 @@ def init_db():
     """)
     c.execute("CREATE INDEX IF NOT EXISTS idx_api_usage_provider ON api_usage_log(provider)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_api_usage_time ON api_usage_log(timestamp)")
+
+    # Listicle companies — ALL companies extracted from each listicle page,
+    # not just the user's company. Powers competitor discovery.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS listicle_companies (
+            id INTEGER PRIMARY KEY,
+            result_id INTEGER NOT NULL,
+            position_on_page INTEGER,
+            company_name TEXT,
+            domain TEXT,
+            link_type TEXT,
+            href_url TEXT,
+            created_at TEXT,
+            FOREIGN KEY(result_id) REFERENCES results(id)
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_lcompanies_domain ON listicle_companies(domain)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_lcompanies_result ON listicle_companies(result_id)")
 
     conn.commit()
 
@@ -277,83 +304,220 @@ def delete_video_domain(domain_id: int):
 
 # ── API keys CRUD ────────────────────────────────────────────────────────
 
+DEFAULT_QUOTAS = {
+    # provider: (monthly_limit, daily_limit)
+    "serper":       (2500, None),
+    "google_cse":   (None, 100),
+    "openpagerank": (None, 1000),
+    "semrush":      (None, None),  # custom — varies by plan
+}
+
+
+def _quota_for(provider: str, period: str) -> int:
+    """Default quota for provider (monthly or daily)."""
+    monthly, daily = DEFAULT_QUOTAS.get(provider, (None, None))
+    return monthly if period == "month" else daily
+
+
 def get_api_keys() -> list:
-    """List all stored API keys (masked for display)."""
+    """List all stored API keys (masked, with usage stats per key)."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    c.execute("SELECT * FROM api_keys ORDER BY provider")
+    c.execute("SELECT * FROM api_keys ORDER BY provider, priority, id")
     out = []
     for row in c.fetchall():
         d = dict(row)
         d["extra_data"] = json.loads(d["extra_data"] or "{}")
-        # Masked display version
         key = d["api_key"] or ""
         d["key_masked"] = key[:4] + "•" * 12 + key[-4:] if len(key) > 8 else "•" * len(key)
+        # Usage stats for this specific key
+        d["usage"] = _key_usage(c, d["id"], d["provider"])
+        # Default quotas if not set on the row
+        if not d.get("monthly_limit"):
+            d["monthly_limit"] = _quota_for(d["provider"], "month")
+        if not d.get("daily_limit"):
+            d["daily_limit"] = _quota_for(d["provider"], "day")
         out.append(d)
     conn.close()
     return out
 
 
+def _key_usage(c, key_id: int, provider: str) -> dict:
+    """Calls today + this month for a specific key. Reuses the existing cursor."""
+    from datetime import datetime as dt
+    today = dt.now().strftime("%Y-%m-%d")
+    month_start = dt.now().strftime("%Y-%m-01")
+    c.execute("SELECT COUNT(*), MAX(credits_remaining) FROM api_usage_log WHERE api_key_id = ?", (key_id,))
+    total, latest_credits = c.fetchone()
+    c.execute("SELECT COUNT(*) FROM api_usage_log WHERE api_key_id = ? AND timestamp >= ?", (key_id, today))
+    today_calls = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM api_usage_log WHERE api_key_id = ? AND timestamp >= ?", (key_id, month_start))
+    month_calls = c.fetchone()[0]
+    return {
+        "total_calls":      total or 0,
+        "today_calls":      today_calls or 0,
+        "month_calls":      month_calls or 0,
+        "latest_credits":   latest_credits,
+    }
+
+
 def get_api_key(provider: str) -> dict:
-    """Get a single api key entry (full, for backend use). Returns None if missing."""
+    """Backward-compat: returns the active highest-priority key for a provider."""
+    return get_active_api_key(provider)
+
+
+def get_active_api_key(provider: str) -> dict:
+    """
+    Quota-aware key selection — returns the highest-priority active key that
+    still has quota remaining. Falls back gracefully.
+    """
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
-    c.execute("SELECT * FROM api_keys WHERE provider = ?", (provider,))
-    row = c.fetchone()
-    conn.close()
-    if row:
+    c.execute("""SELECT * FROM api_keys
+                 WHERE provider = ? AND is_active = 1
+                 ORDER BY priority, id""", (provider,))
+    rows = c.fetchall()
+    if not rows:
+        conn.close()
+        return None
+
+    # Pick the first key with quota remaining
+    for row in rows:
         d = dict(row)
+        usage = _key_usage(c, d["id"], provider)
+        monthly = d.get("monthly_limit") or _quota_for(provider, "month")
+        daily   = d.get("daily_limit")   or _quota_for(provider, "day")
+        if monthly and usage["month_calls"] >= monthly:
+            continue  # this key exhausted for the month
+        if daily and usage["today_calls"] >= daily:
+            continue  # this key exhausted for the day
         d["extra_data"] = json.loads(d["extra_data"] or "{}")
+        d["usage"] = usage
+        conn.close()
         return d
-    return None
+
+    # All keys exhausted — return the first anyway (caller will get rate-limit error)
+    d = dict(rows[0])
+    d["extra_data"] = json.loads(d["extra_data"] or "{}")
+    d["usage"] = _key_usage(c, d["id"], provider)
+    conn.close()
+    return d
 
 
-def upsert_api_key(provider: str, api_key: str, extra_data: dict = None):
-    """Add or update an API key."""
+def add_api_key(provider: str, api_key: str, label: str = None,
+                priority: int = 0, monthly_limit: int = None,
+                daily_limit: int = None, extra_data: dict = None) -> int:
+    """Add a new API key (one of potentially many per provider)."""
     now = datetime.now().isoformat()
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("SELECT provider FROM api_keys WHERE provider = ?", (provider,))
-    if c.fetchone():
-        c.execute("""UPDATE api_keys SET api_key = ?, extra_data = ?, updated_at = ?
-                     WHERE provider = ?""",
-                  (api_key, json.dumps(extra_data or {}), now, provider))
+    try:
+        c.execute("""INSERT INTO api_keys
+                     (provider, api_key, label, priority, monthly_limit, daily_limit,
+                      extra_data, is_active, created_at, updated_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
+                  (provider, api_key, label or "", priority,
+                   monthly_limit, daily_limit,
+                   json.dumps(extra_data or {}), now, now))
+        conn.commit()
+        return c.lastrowid
+    except sqlite3.IntegrityError:
+        # Duplicate (provider, api_key) — return existing id
+        c.execute("SELECT id FROM api_keys WHERE provider = ? AND api_key = ?",
+                  (provider, api_key))
+        row = c.fetchone()
+        return row[0] if row else -1
+    finally:
+        conn.close()
+
+
+def upsert_api_key(provider: str, api_key: str, extra_data: dict = None):
+    """Backward-compat: add or update the FIRST key for a provider. Now defers to add_api_key."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT id FROM api_keys WHERE provider = ? AND api_key = ?",
+              (provider, api_key))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        update_api_key(row[0], extra_data=extra_data)
+        return row[0]
+    return add_api_key(provider, api_key, extra_data=extra_data)
+
+
+def update_api_key(key_id: int, label: str = None, priority: int = None,
+                   is_active: bool = None, monthly_limit: int = None,
+                   daily_limit: int = None, extra_data: dict = None):
+    """Update specific fields on an existing API key."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    updates, params = [], []
+    if label is not None:
+        updates.append("label = ?"); params.append(label)
+    if priority is not None:
+        updates.append("priority = ?"); params.append(priority)
+    if is_active is not None:
+        updates.append("is_active = ?"); params.append(1 if is_active else 0)
+    if monthly_limit is not None:
+        updates.append("monthly_limit = ?"); params.append(monthly_limit)
+    if daily_limit is not None:
+        updates.append("daily_limit = ?"); params.append(daily_limit)
+    if extra_data is not None:
+        updates.append("extra_data = ?"); params.append(json.dumps(extra_data))
+    if updates:
+        updates.append("updated_at = ?"); params.append(datetime.now().isoformat())
+        params.append(key_id)
+        c.execute(f"UPDATE api_keys SET {', '.join(updates)} WHERE id = ?", params)
+        conn.commit()
+    conn.close()
+
+
+def delete_api_key(provider_or_id):
+    """Delete a key. Accepts either an int (key id) or string (provider — deletes ALL keys for that provider)."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    if isinstance(provider_or_id, int):
+        c.execute("DELETE FROM api_keys WHERE id = ?", (provider_or_id,))
     else:
-        c.execute("""INSERT INTO api_keys (provider, api_key, extra_data, created_at, updated_at)
-                     VALUES (?, ?, ?, ?, ?)""",
-                  (provider, api_key, json.dumps(extra_data or {}), now, now))
+        c.execute("DELETE FROM api_keys WHERE provider = ?", (provider_or_id,))
     conn.commit()
     conn.close()
 
 
-def delete_api_key(provider: str):
+def delete_api_key_by_id(key_id: int):
+    delete_api_key(key_id)
+
+
+def set_api_key_status(provider_or_id, status: str):
+    """Update test status for a key. Accepts int (id) or string (provider — updates all for that provider)."""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("DELETE FROM api_keys WHERE provider = ?", (provider,))
+    if isinstance(provider_or_id, int):
+        c.execute("UPDATE api_keys SET last_tested = ?, last_status = ? WHERE id = ?",
+                  (datetime.now().isoformat(), status, provider_or_id))
+    else:
+        c.execute("UPDATE api_keys SET last_tested = ?, last_status = ? WHERE provider = ?",
+                  (datetime.now().isoformat(), status, provider_or_id))
     conn.commit()
     conn.close()
 
 
-def set_api_key_status(provider: str, status: str):
+def log_api_call(provider: str, success: bool = True, credits_remaining: int = None,
+                 metadata: dict = None, api_key_id: int = None):
+    """Record an API call for usage tracking — attaches to a specific key if known."""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("UPDATE api_keys SET last_tested = ?, last_status = ? WHERE provider = ?",
-              (datetime.now().isoformat(), status, provider))
-    conn.commit()
-    conn.close()
-
-
-def log_api_call(provider: str, success: bool = True, credits_remaining: int = None, metadata: dict = None):
-    """Record an API call for usage tracking."""
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("""INSERT INTO api_usage_log (provider, timestamp, success, credits_remaining, metadata)
-                 VALUES (?, ?, ?, ?, ?)""",
-              (provider, datetime.now().isoformat(), 1 if success else 0,
-               credits_remaining, json.dumps(metadata or {})))
-    c.execute("UPDATE api_keys SET usage_count = usage_count + 1 WHERE provider = ?", (provider,))
+    c.execute("""INSERT INTO api_usage_log
+                 (provider, api_key_id, timestamp, success, credits_remaining, metadata)
+                 VALUES (?, ?, ?, ?, ?, ?)""",
+              (provider, api_key_id, datetime.now().isoformat(),
+               1 if success else 0, credits_remaining, json.dumps(metadata or {})))
+    if api_key_id:
+        c.execute("UPDATE api_keys SET usage_count = usage_count + 1 WHERE id = ?", (api_key_id,))
+    else:
+        c.execute("UPDATE api_keys SET usage_count = usage_count + 1 WHERE provider = ?", (provider,))
     conn.commit()
     conn.close()
 
@@ -519,13 +683,221 @@ def get_cached_search_results(search_id: int) -> list:
     return rows
 
 
+# ── Listicle company extraction (competitor intelligence) ───────────────
+
+def save_listicle_companies(result_id: int, companies: list):
+    """Save the list of all companies extracted from a listicle page."""
+    if not companies:
+        return
+    now = datetime.now().isoformat()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    # Wipe previous extraction for this result_id so re-runs don't duplicate
+    c.execute("DELETE FROM listicle_companies WHERE result_id = ?", (result_id,))
+    for comp in companies:
+        c.execute("""INSERT INTO listicle_companies
+                     (result_id, position_on_page, company_name, domain, link_type, href_url, created_at)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                  (result_id, comp.get("position"), comp.get("company_name"),
+                   comp.get("domain"), comp.get("link_type"), comp.get("href_url"), now))
+    conn.commit()
+    conn.close()
+
+
+def get_listicle_companies(result_id: int) -> list:
+    """Get all companies on a specific listicle (for deep-dive view)."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("""SELECT * FROM listicle_companies
+                 WHERE result_id = ?
+                 ORDER BY position_on_page""", (result_id,))
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return rows
+
+
+def find_result_id_by_url(url: str, search_id: int = None) -> int:
+    """Find the results.id for a given URL (used to attach extracted companies)."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    if search_id is not None:
+        c.execute("SELECT id FROM results WHERE search_id = ? AND url = ?", (search_id, url))
+    else:
+        c.execute("SELECT id FROM results WHERE url = ? ORDER BY id DESC LIMIT 1", (url,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def get_keywords_for_company(company_id: int) -> list:
+    """List all keywords searched under a specific company (for filter UI)."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("""
+        SELECT k.id, k.keyword, k.location,
+               s.id as search_id, s.timestamp, s.result_count
+        FROM keywords k
+        JOIN searches s ON s.keyword_id = k.id
+        WHERE s.company_id = ?
+        ORDER BY s.timestamp DESC
+    """, (company_id,))
+    rows = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return rows
+
+
+def get_competitors_for_company(company_id: int, min_appearances: int = 2,
+                                keyword_ids: list = None) -> list:
+    """
+    Find competitors of a company by looking at OTHER domains that appear
+    on the same listicle pages where this company has searched.
+
+    Optional keyword_ids filter limits to specific keywords.
+
+    Returns: [{domain, co_appearances, avg_position, sample_keywords}]
+    """
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+
+    # Get company's own domain (to exclude from competitor list)
+    c.execute("SELECT domain FROM companies WHERE id = ?", (company_id,))
+    row = c.fetchone()
+    if not row:
+        conn.close()
+        return []
+    own_domain = row[0]
+
+    # Find all listicle pages (results) — optionally filter by keywords
+    if keyword_ids:
+        kw_placeholders = ",".join("?" * len(keyword_ids))
+        c.execute(f"""
+            SELECT r.id as result_id
+            FROM results r
+            JOIN searches s ON r.search_id = s.id
+            WHERE s.company_id = ?
+              AND s.keyword_id IN ({kw_placeholders})
+              AND (r.page_type LIKE 'Listicle%' OR r.page_type = 'Blog / Article'
+                   OR r.page_type = 'Possible listicle')
+        """, [company_id, *keyword_ids])
+    else:
+        c.execute("""
+            SELECT r.id as result_id
+            FROM results r
+            JOIN searches s ON r.search_id = s.id
+            WHERE s.company_id = ?
+              AND (r.page_type LIKE 'Listicle%' OR r.page_type = 'Blog / Article'
+                   OR r.page_type = 'Possible listicle')
+        """, (company_id,))
+    result_ids = [r[0] for r in c.fetchall()]
+    if not result_ids:
+        conn.close()
+        return []
+
+    # Aggregate companies that appear on these listicles
+    placeholders = ",".join("?" * len(result_ids))
+    c.execute(f"""
+        SELECT lc.domain,
+               COUNT(DISTINCT lc.result_id) as co_appearances,
+               AVG(lc.position_on_page)     as avg_position,
+               GROUP_CONCAT(DISTINCT k.keyword) as sample_keywords
+        FROM listicle_companies lc
+        JOIN results r  ON lc.result_id = r.id
+        JOIN searches s ON r.search_id = s.id
+        JOIN keywords k ON s.keyword_id = k.id
+        WHERE lc.result_id IN ({placeholders})
+          AND lc.domain IS NOT NULL
+          AND lc.domain != ''
+          AND lc.domain != ?
+        GROUP BY lc.domain
+        HAVING co_appearances >= ?
+        ORDER BY co_appearances DESC, avg_position ASC
+    """, [*result_ids, own_domain, min_appearances])
+
+    out = []
+    for row in c.fetchall():
+        d = dict(row)
+        # Trim sample_keywords to first 3 for display
+        sk = (d.get("sample_keywords") or "").split(",")[:3]
+        d["sample_keywords"] = [s for s in sk if s]
+        d["avg_position"] = round(d["avg_position"], 1) if d["avg_position"] else None
+        out.append(d)
+    conn.close()
+    return out
+
+
+def get_coverage_gaps(company_id: int, competitor_domain: str) -> dict:
+    """
+    Coverage gap analysis — find listicles where the competitor appears
+    but the company does NOT (or appears at a lower position).
+    Returns: {
+      competitor_listicles: [...],
+      your_listicles: [...],
+      gap_listicles: [...] — competitor is on these, you are NOT
+    }
+    """
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+
+    c.execute("SELECT domain, name FROM companies WHERE id = ?", (company_id,))
+    row = c.fetchone()
+    if not row:
+        conn.close()
+        return {"gap_listicles": [], "competitor_listicles": [], "your_listicles": []}
+    own_domain = row[0]
+    company_name = row[1]
+
+    # Listicles where the competitor appears
+    c.execute("""
+        SELECT DISTINCT r.id, r.url, r.domain as page_domain, r.page_type,
+                        lc.position_on_page as comp_pos, k.keyword
+        FROM listicle_companies lc
+        JOIN results r ON lc.result_id = r.id
+        JOIN searches s ON r.search_id = s.id
+        JOIN keywords k ON s.keyword_id = k.id
+        WHERE s.company_id = ? AND lc.domain = ?
+    """, (company_id, competitor_domain))
+    competitor_listicles = [dict(r) for r in c.fetchall()]
+
+    # Listicles where the user's company is listed
+    c.execute("""
+        SELECT DISTINCT r.id, r.url, r.position_on_page as your_pos
+        FROM results r
+        JOIN searches s ON r.search_id = s.id
+        WHERE s.company_id = ? AND r.status = 'Listed'
+    """, (company_id,))
+    your_listicle_urls = {dict(r)["url"]: dict(r) for r in c.fetchall()}
+
+    # Find gaps: competitor IS on, you are NOT
+    gaps = []
+    for cl in competitor_listicles:
+        if cl["url"] not in your_listicle_urls:
+            gaps.append(cl)
+
+    conn.close()
+    return {
+        "company_name": company_name,
+        "company_domain": own_domain,
+        "competitor_domain": competitor_domain,
+        "competitor_listicles": competitor_listicles,
+        "your_listicles_count": len(your_listicle_urls),
+        "competitor_listicles_count": len(competitor_listicles),
+        "gap_listicles": gaps,
+        "gap_count": len(gaps),
+    }
+
+
 def get_startup_info() -> dict:
     """Return DB stats for startup log."""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     out = {}
     for table in ("companies", "keywords", "searches", "results",
-                  "aggregator_domains", "video_domains", "api_keys"):
+                  "listicle_companies", "aggregator_domains",
+                  "video_domains", "api_keys"):
         try:
             c.execute(f"SELECT COUNT(*) FROM {table}")
             out[table] = c.fetchone()[0]

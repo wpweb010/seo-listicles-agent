@@ -41,6 +41,7 @@ init_db()
 _startup_info = get_startup_info()
 print(f"[DB] Loaded: {_startup_info['companies']} companies, "
       f"{_startup_info['searches']} searches, {_startup_info['results']} results, "
+      f"{_startup_info['listicle_companies']} extracted companies, "
       f"{_startup_info['aggregator_domains']} aggregators, "
       f"{_startup_info['video_domains']} video domains, "
       f"{_startup_info['api_keys']} API keys")
@@ -152,6 +153,15 @@ async def start_search(req: SearchRequest):
             company_id_to_save = company["id"] if company else req.company_id
             search_id = save_search(keyword_id, domain_to_save, len(results), company_id=company_id_to_save)
             save_results(search_id, results)
+
+            # Persist extracted competitor companies per listicle
+            import database as _db_mod
+            for row in results:
+                comps = row.get("_extracted_companies")
+                if comps:
+                    rid = _db_mod.find_result_id_by_url(row["URL"], search_id=search_id)
+                    if rid:
+                        _db_mod.save_listicle_companies(rid, comps)
 
             _runs[run_id]["results"] = results
             q.put({"type": "done", "results": results})
