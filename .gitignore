@@ -1,0 +1,29 @@
+# Secrets — never commit
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# Local database
+search_history.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated exports
+*.xlsx
+listicles_*.xlsx
+test_*.xlsx
+*_Outreach_*.xlsx
+*_history_*.xlsx
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
