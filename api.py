@@ -29,10 +29,21 @@ from database import (
     create_company, update_company, delete_company, get_companies,
     get_company, get_company_by_domain, get_history_by_company,
     get_results_by_company,
+    # New (Phase 5)
+    get_aggregator_domains, add_aggregator_domain, delete_aggregator_domain,
+    get_video_domains, add_video_domain, delete_video_domain,
+    get_api_keys, get_api_key, upsert_api_key, delete_api_key, set_api_key_status,
+    get_api_usage, get_dashboard_stats, get_cached_search_results, get_startup_info,
 )
 
-# Initialize database on startup
+# Initialize database on startup + show what loaded
 init_db()
+_startup_info = get_startup_info()
+print(f"[DB] Loaded: {_startup_info['companies']} companies, "
+      f"{_startup_info['searches']} searches, {_startup_info['results']} results, "
+      f"{_startup_info['aggregator_domains']} aggregators, "
+      f"{_startup_info['video_domains']} video domains, "
+      f"{_startup_info['api_keys']} API keys")
 
 app = FastAPI(title="SEO Listicles Agent", version="1.0")
 
@@ -41,6 +52,12 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # In-memory run store — fine for a local single-user tool
 _runs: dict[str, dict] = {}
+app.state.runs = _runs  # Expose for phase 5 modules
+
+# Register Phase 5 endpoints (dashboard, settings, bulk, re-run)
+import database as _db
+import api_phase5
+api_phase5.register_routes(app, agent, _db)
 
 
 # ── Request / response models ─────────────────────────────────────────────────

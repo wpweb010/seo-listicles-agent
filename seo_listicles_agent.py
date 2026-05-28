@@ -150,36 +150,74 @@ def to_int(v) -> int:
 
 # ── Credentials ───────────────────────────────────────────────────────────────
 
+def _db_key(provider: str) -> dict:
+    """Get an API key from DB (returns None if missing). Falls back to .env."""
+    try:
+        from database import get_api_key
+        return get_api_key(provider)
+    except Exception:
+        return None
+
+
+def _resolve_key(provider: str, env_name: str) -> str:
+    """Try DB first, then .env. Returns the api_key string or empty string."""
+    row = _db_key(provider)
+    if row and row.get("api_key"):
+        return row["api_key"]
+    return os.environ.get(env_name, "")
+
+
+def _resolve_extra(provider: str, field: str, env_name: str = None) -> str:
+    """Get an extra field (e.g. CSE cx) from DB extra_data or .env fallback."""
+    row = _db_key(provider)
+    if row:
+        extra = row.get("extra_data") or {}
+        if extra.get(field):
+            return extra[field]
+    if env_name:
+        return os.environ.get(env_name, "")
+    return ""
+
+
 def get_creds(mode: str) -> dict:
     if mode == "semrush":
-        key = os.environ.get("SEMRUSH_API_KEY", "")
+        key = _resolve_key("semrush", "SEMRUSH_API_KEY")
         if not key:
-            raise ValueError("SEMRUSH_API_KEY not set in .env or environment.")
+            raise ValueError("Semrush API key not configured (Settings → API Keys, or SEMRUSH_API_KEY in .env).")
         return {"mode": "semrush", "semrush": key}
 
     # Free mode: prefer Serper.dev, fall back to Google CSE
-    serper_key = os.environ.get("SERPER_API_KEY", "")
+    serper_key = _resolve_key("serper", "SERPER_API_KEY")
     if serper_key:
         return {
             "mode":     "free",
             "provider": "serper",
             "serper":   serper_key,
-            "opr_key":  os.environ.get("OPENPAGERANK_KEY", ""),
+            "opr_key":  _resolve_key("openpagerank", "OPENPAGERANK_KEY"),
         }
-    cse_key = os.environ.get("GOOGLE_CSE_KEY", "")
-    cse_cx  = os.environ.get("GOOGLE_CSE_CX", "")
+    cse_key = _resolve_key("google_cse", "GOOGLE_CSE_KEY")
+    cse_cx  = _resolve_extra("google_cse", "cx", "GOOGLE_CSE_CX")
     if not cse_key or not cse_cx:
         raise ValueError(
-            "No SERP credentials found. "
-            "Set SERPER_API_KEY (recommended) or GOOGLE_CSE_KEY + GOOGLE_CSE_CX in .env"
+            "No SERP credentials configured. Open Settings → API Keys and add a "
+            "Serper.dev key (recommended) OR Google CSE key + Search Engine ID."
         )
     return {
         "mode":     "free",
         "provider": "cse",
         "cse_key":  cse_key,
         "cse_cx":   cse_cx,
-        "opr_key":  os.environ.get("OPENPAGERANK_KEY", ""),
+        "opr_key":  _resolve_key("openpagerank", "OPENPAGERANK_KEY"),
     }
+
+
+def _log_api(provider: str, success: bool = True, credits: int = None, meta: dict = None):
+    """Log an API call (best-effort)."""
+    try:
+        from database import log_api_call
+        log_api_call(provider, success=success, credits_remaining=credits, metadata=meta)
+    except Exception:
+        pass
 
 
 # ── SERP fetching (organic only — no ads, no sponsored) ───────────────────────
@@ -205,9 +243,14 @@ def fetch_serp_page(keyword: str, creds: dict, page_num: int, region: str) -> li
             )
             data = r.json()
         except requests.RequestException as e:
+            _log_api("serper", success=False, meta={"error": str(e)})
             raise RuntimeError(f"Serper.dev network error: {e}")
         if "error" in data:
+            _log_api("serper", success=False, meta={"error": data.get("error")})
             raise RuntimeError(f"Serper.dev error: {data.get('error', data)}")
+        # Capture credits if Serper returns them in the response
+        credits = data.get("credits") or data.get("credits_remaining")
+        _log_api("serper", success=True, credits=credits, meta={"page": page_num})
         organic = data.get("organic", [])
         results = []
         for i, item in enumerate(organic):
@@ -236,15 +279,18 @@ def fetch_serp_page(keyword: str, creds: dict, page_num: int, region: str) -> li
             )
             data = r.json()
         except requests.RequestException as e:
+            _log_api("google_cse", success=False, meta={"error": str(e)})
             raise RuntimeError(f"Google CSE network error: {e}")
         if "error" in data:
             msg = data["error"].get("message", "")
+            _log_api("google_cse", success=False, meta={"error": msg})
             if "blocked" in msg.lower() or "access" in msg.lower():
                 raise RuntimeError(
                     "Custom Search API blocked. Enable billing at console.cloud.google.com "
-                    "or switch to Serper.dev (set SERPER_API_KEY in .env)."
+                    "or switch to Serper.dev (Settings → API Keys)."
                 )
             raise RuntimeError(f"Google CSE error: {msg[:200]}")
+        _log_api("google_cse", success=True, meta={"page": page_num})
         items = data.get("items", [])
         results = []
         for i, it in enumerate(items):
@@ -306,15 +352,17 @@ def fetch_openpagerank(domains: list, opr_key: str) -> dict:
                 headers={"API-OPR": opr_key},
                 timeout=20,
             )
-            for row in r.json().get("response", []):
+            data = r.json()
+            for row in data.get("response", []):
                 d = row.get("domain", "")
                 rank = row.get("page_rank_decimal", 0) or 0
                 try:
                     result[d] = round(float(rank) * 10, 1)
                 except (ValueError, TypeError):
                     result[d] = ""
-        except requests.RequestException:
-            pass
+            _log_api("openpagerank", success=True, meta={"batch": len(batch)})
+        except requests.RequestException as e:
+            _log_api("openpagerank", success=False, meta={"error": str(e)})
         time.sleep(REQUEST_DELAY)
     return result
 
@@ -346,17 +394,44 @@ def fetch_semrush_authority(domain: str, key: str, cache: dict) -> str:
 
 # ── Classification ─────────────────────────────────────────────────────────────
 
+def _get_aggregator_list():
+    """Lazy load aggregator list from DB; fall back to hardcoded default."""
+    try:
+        from database import get_aggregator_domain_list
+        domains = get_aggregator_domain_list()
+        if domains:
+            return domains
+    except Exception:
+        pass
+    return DIRECTORY_DOMAINS
+
+
+def _get_video_list():
+    """Lazy load video domains from DB; fall back to hardcoded default."""
+    try:
+        from database import get_video_domain_list
+        domains = get_video_domain_list()
+        if domains:
+            return domains
+    except Exception:
+        pass
+    return VIDEO_DOMAINS
+
+
 def classify(url: str, domain: str, title: str = "") -> str:
     u = (url   or "").lower()
     d = (domain or "").lower()
     t = (title  or "").lower()
 
+    aggregators = _get_aggregator_list()
+    videos      = _get_video_list()
+
     # 1. Aggregator check (highest priority — directory domains)
-    if any(dd in d for dd in DIRECTORY_DOMAINS):
+    if any(dd in d for dd in aggregators):
         return "Aggregator"
 
     # 1b. Video platforms — YouTube, Vimeo, etc.
-    if any(vd in d for vd in VIDEO_DOMAINS):
+    if any(vd in d for vd in videos):
         return VIDEO_TYPE
 
     # 2. Service Page check — these sell the OWN company's services

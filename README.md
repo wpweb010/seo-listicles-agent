@@ -4,6 +4,8 @@ A local web tool that finds **listicle pages** (Google SERP results listing comp
 
 Built for SEO outreach teams that need to track where their company is mentioned across competitor blogs, aggregators, and service pages.
 
+**Now with a full dashboard:** sidebar navigation, per-company stats with charts, API-key management with usage tracking, bulk keyword search, and one-click view of cached search results.
+
 ---
 
 ## Why it exists

@@ -27,3 +27,7 @@ test_*.xlsx
 .idea/
 .DS_Store
 Thumbs.db
+
+# Server logs (transient)
+.server.log
+.server.err

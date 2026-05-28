@@ -4,611 +4,709 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SEO Listicles Agent</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #F0F4F8;
-      color: #1A2332;
-      min-height: 100vh;
-    }
-
-    /* ── Header ── */
-    header {
-      background: #1F4E78;
-      color: #fff;
-      padding: 18px 32px;
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-    header h1 { font-size: 1.35rem; font-weight: 700; letter-spacing: -.3px; }
-    header span { font-size: .85rem; opacity: .7; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+           background: #F0F4F8; color: #1A2332; min-height: 100vh; }
 
     /* ── Layout ── */
-    main { max-width: 1200px; margin: 0 auto; padding: 28px 24px; }
-
-    /* ── Card ── */
-    .card {
-      background: #fff;
-      border-radius: 10px;
-      box-shadow: 0 1px 4px rgba(0,0,0,.08);
-      padding: 24px 28px;
-      margin-bottom: 22px;
+    .app { display: flex; min-height: 100vh; }
+    aside.sidebar {
+      width: 220px; background: #1F2937; color: #E5E7EB;
+      display: flex; flex-direction: column; padding: 20px 0;
+      flex-shrink: 0; position: sticky; top: 0; height: 100vh;
     }
-    .card-title {
-      font-size: .78rem;
-      font-weight: 700;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      color: #5A6A7E;
+    aside.sidebar .brand {
+      font-size: 1rem; font-weight: 700; padding: 0 20px 18px;
+      border-bottom: 1px solid #374151; margin-bottom: 12px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    aside.sidebar nav { display: flex; flex-direction: column; gap: 4px; padding: 0 8px; }
+    aside.sidebar nav a {
+      display: flex; align-items: center; gap: 12px;
+      padding: 11px 14px; color: #D1D5DB; text-decoration: none;
+      border-radius: 8px; font-size: .92rem; font-weight: 500;
+      cursor: pointer; transition: all .15s;
+    }
+    aside.sidebar nav a:hover { background: #374151; color: #fff; }
+    aside.sidebar nav a.active { background: #2563EB; color: #fff; }
+    aside.sidebar nav a .icon { font-size: 1.1rem; }
+    aside.sidebar .footer {
+      margin-top: auto; padding: 14px 20px; font-size: .72rem;
+      color: #6B7280; border-top: 1px solid #374151;
+    }
+
+    main.content { flex: 1; padding: 24px 32px; overflow-x: hidden; }
+
+    .view { display: none; }
+    .view.active { display: block; }
+
+    .view-header {
+      display: flex; justify-content: space-between; align-items: center;
       margin-bottom: 18px;
     }
+    .view-header h1 { font-size: 1.4rem; font-weight: 700; color: #1F2937; }
+    .view-header p { font-size: .85rem; color: #6B7280; margin-top: 4px; }
 
-    /* ── Form ── */
+    .card {
+      background: #fff; border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      padding: 20px 22px; margin-bottom: 18px;
+    }
+    .card-title {
+      font-size: .78rem; font-weight: 700; letter-spacing: .08em;
+      text-transform: uppercase; color: #5A6A7E; margin-bottom: 14px;
+    }
+
+    /* ── Forms ── */
     .form-grid {
-      display: grid;
-      grid-template-columns: 1fr 160px 120px 160px;
-      gap: 14px;
-      align-items: end;
+      display: grid; grid-template-columns: 1fr 200px 140px 160px;
+      gap: 12px; align-items: end;
     }
-    @media (max-width: 720px) {
-      .form-grid { grid-template-columns: 1fr 1fr; }
-    }
+    @media (max-width: 900px) { .form-grid { grid-template-columns: 1fr 1fr; } }
     .field label {
-      display: block;
-      font-size: .78rem;
-      font-weight: 600;
-      color: #5A6A7E;
-      margin-bottom: 6px;
+      display: block; font-size: .78rem; font-weight: 600;
+      color: #5A6A7E; margin-bottom: 6px;
     }
-    .field input, .field select {
-      width: 100%;
-      padding: 9px 12px;
-      border: 1.5px solid #D0D9E3;
-      border-radius: 7px;
-      font-size: .95rem;
-      color: #1A2332;
-      background: #fff;
-      transition: border-color .15s;
-      appearance: none;
+    .field input, .field select, .field textarea {
+      width: 100%; padding: 9px 12px;
+      border: 1.5px solid #D0D9E3; border-radius: 7px;
+      font-size: .92rem; color: #1A2332; background: #fff;
+      transition: border-color .15s; appearance: none;
+      font-family: inherit;
     }
-    .field input:focus, .field select:focus {
-      outline: none;
-      border-color: #2E75B6;
+    .field input:focus, .field select:focus, .field textarea:focus {
+      outline: none; border-color: #2E75B6;
       box-shadow: 0 0 0 3px rgba(46,117,182,.12);
     }
     .field input#keyword { font-size: 1.05rem; font-weight: 500; }
-
-    .row-options {
-      display: flex;
-      gap: 24px;
-      align-items: center;
-      margin-top: 14px;
-      flex-wrap: wrap;
-    }
     .radio-group { display: flex; gap: 0; }
     .radio-group label {
-      padding: 8px 16px;
-      border: 1.5px solid #D0D9E3;
-      cursor: pointer;
-      font-size: .85rem;
-      font-weight: 500;
-      color: #5A6A7E;
-      background: #fff;
-      transition: all .15s;
+      padding: 8px 14px; border: 1.5px solid #D0D9E3;
+      cursor: pointer; font-size: .85rem; font-weight: 500;
+      color: #5A6A7E; background: #fff; transition: all .15s;
     }
     .radio-group label:first-of-type { border-radius: 7px 0 0 7px; }
-    .radio-group label:last-of-type  { border-radius: 0 7px 7px 0; border-left: none; }
-    .radio-group input[type=radio]   { display: none; }
+    .radio-group label:last-of-type { border-radius: 0 7px 7px 0; border-left: none; }
+    .radio-group input[type=radio] { display: none; }
     .radio-group input[type=radio]:checked + label {
       background: #1F4E78; color: #fff; border-color: #1F4E78;
     }
-    .toggle {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-      font-size: .88rem;
-      font-weight: 500;
-      color: #3A4D63;
-      user-select: none;
-    }
+    .toggle { display: flex; align-items: center; gap: 8px; cursor: pointer;
+              font-size: .88rem; font-weight: 500; color: #3A4D63; user-select: none; }
     .toggle input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
 
-    .btn {
-      padding: 10px 24px;
-      border-radius: 7px;
-      border: none;
-      font-size: .95rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all .15s;
-    }
-    .btn-primary {
-      background: #1F4E78; color: #fff;
-      margin-top: 18px;
-    }
+    .btn { padding: 9px 20px; border-radius: 7px; border: none;
+           font-size: .9rem; font-weight: 600; cursor: pointer;
+           transition: all .15s; }
+    .btn-primary { background: #1F4E78; color: #fff; }
     .btn-primary:hover { background: #163A5A; }
     .btn-primary:disabled { background: #A0B4C8; cursor: not-allowed; }
     .btn-green { background: #217346; color: #fff; }
     .btn-green:hover { background: #185C37; }
+    .btn-red { background: #dc2626; color: #fff; }
+    .btn-red:hover { background: #991B1B; }
+    .btn-ghost { background: #fff; color: #1F4E78; border: 1.5px solid #D0D9E3; }
+    .btn-ghost:hover { border-color: #1F4E78; }
+    .btn-sm { padding: 5px 10px; font-size: .8rem; }
 
-    /* ── Metric info ── */
-    .metrics-info {
-      background: #F7FAFD;
-      border: 1px solid #D8E6F2;
-      border-radius: 8px;
-      padding: 14px 18px;
-      margin-top: 18px;
-      font-size: .82rem;
-      line-height: 1.7;
-      color: #3A4D63;
+    /* ── Dashboard ── */
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px; margin-bottom: 22px;
     }
-    .metrics-info strong { color: #1F4E78; }
+    .stat-card {
+      background: #fff; border-radius: 10px; padding: 18px 20px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .stat-card .label { font-size: .75rem; text-transform: uppercase;
+                        font-weight: 600; color: #6B7280; letter-spacing: .05em; }
+    .stat-card .value { font-size: 2rem; font-weight: 700; color: #1F4E78; }
+    .stat-card .icon { font-size: 1.3rem; opacity: .6; }
+    .stat-card.companies { border-left: 4px solid #2563EB; }
+    .stat-card.searches  { border-left: 4px solid #7C3AED; }
+    .stat-card.listed    { border-left: 4px solid #16A34A; }
+    .stat-card.results   { border-left: 4px solid #F59E0B; }
 
-    /* ── Progress ── */
-    #progressCard { display: none; }
+    .companies-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+    }
+    .company-card {
+      background: #F7FAFD; border: 1.5px solid #D8E6F2;
+      border-radius: 10px; padding: 14px 16px; position: relative;
+    }
+    .company-card h4 { margin: 0 0 4px; color: #1F4E78; font-size: 1rem; }
+    .company-card .domain-text { font-size: .8rem; color: #6B7280; margin-bottom: 8px; }
+    .company-card .metrics {
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px; margin: 10px 0;
+    }
+    .company-card .metric {
+      text-align: center; padding: 6px;
+      background: #fff; border-radius: 5px;
+    }
+    .company-card .metric .val { font-size: 1.1rem; font-weight: 700; color: #1F4E78; }
+    .company-card .metric .lbl { font-size: .65rem; color: #6B7280;
+                                  text-transform: uppercase; letter-spacing: .05em; }
+    .company-card .actions { display: flex; gap: 6px; }
+    .company-card .actions button { flex: 1; padding: 6px;
+                                     font-size: .78rem; font-weight: 600; cursor: pointer;
+                                     border-radius: 5px; border: none; }
+
+    /* ── Charts ── */
+    .chart-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .chart-row { grid-template-columns: 1fr; } }
+    .chart-card { background: #fff; padding: 18px; border-radius: 10px;
+                  box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .chart-card canvas { max-width: 100%; }
+
+    /* ── Search ── */
+    .row-options { display: flex; gap: 24px; align-items: center;
+                   margin-top: 14px; flex-wrap: wrap; }
+
+    /* ── Progress log ── */
     .log-box {
-      background: #0D1117;
-      color: #58D68D;
+      background: #0D1117; color: #58D68D;
       font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
-      font-size: .8rem;
-      line-height: 1.6;
-      padding: 14px 16px;
-      border-radius: 8px;
-      height: 220px;
-      overflow-y: auto;
+      font-size: .8rem; line-height: 1.6; padding: 14px 16px;
+      border-radius: 8px; height: 220px; overflow-y: auto;
       white-space: pre-wrap;
     }
-    .spinner {
-      display: inline-block;
-      width: 18px; height: 18px;
-      border: 3px solid #D0D9E3;
-      border-top-color: #2E75B6;
-      border-radius: 50%;
-      animation: spin .7s linear infinite;
-      vertical-align: middle;
-      margin-right: 8px;
-    }
+    .spinner { display: inline-block; width: 18px; height: 18px;
+               border: 3px solid #D0D9E3; border-top-color: #2E75B6;
+               border-radius: 50%; animation: spin .7s linear infinite;
+               vertical-align: middle; margin-right: 8px; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Results ── */
-    #resultsCard { display: none; }
-
-    .stats-bar {
-      display: flex;
-      gap: 18px;
-      margin-bottom: 18px;
-      flex-wrap: wrap;
+    /* ── Results table ── */
+    .stats-bar { display: flex; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; }
+    .stats-bar .stat {
+      background: #F0F4F8; border-radius: 8px; padding: 10px 16px;
+      text-align: center; min-width: 100px;
     }
-    .stat {
-      background: #F0F4F8;
-      border-radius: 8px;
-      padding: 10px 18px;
-      text-align: center;
-      min-width: 110px;
-    }
-    .stat .num  { font-size: 1.6rem; font-weight: 700; color: #1F4E78; }
-    .stat .lbl  { font-size: .75rem; color: #5A6A7E; margin-top: 2px; }
-
-    .filter-bar {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 16px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-    .filter-btn {
-      padding: 6px 14px;
-      border-radius: 20px;
-      border: 1.5px solid #D0D9E3;
-      background: #fff;
-      font-size: .82rem;
-      font-weight: 600;
-      color: #5A6A7E;
-      cursor: pointer;
-      transition: all .15s;
-    }
-    .filter-btn.active {
-      background: #1F4E78; color: #fff; border-color: #1F4E78;
-    }
+    .stats-bar .stat .num { font-size: 1.5rem; font-weight: 700; color: #1F4E78; }
+    .stats-bar .stat .lbl { font-size: .7rem; color: #5A6A7E; margin-top: 2px;
+                             text-transform: uppercase; }
+    .filter-bar { display: flex; gap: 8px; margin-bottom: 14px;
+                  flex-wrap: wrap; align-items: center; }
+    .filter-btn { padding: 6px 14px; border-radius: 20px;
+                  border: 1.5px solid #D0D9E3; background: #fff;
+                  font-size: .82rem; font-weight: 600; color: #5A6A7E;
+                  cursor: pointer; transition: all .15s; }
+    .filter-btn.active { background: #1F4E78; color: #fff; border-color: #1F4E78; }
     .filter-btn:hover:not(.active) { border-color: #2E75B6; color: #2E75B6; }
-
     .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #E0E8F0; }
-    table { width: 100%; border-collapse: collapse; font-size: .83rem; }
-    thead th {
-      background: #1F4E78; color: #fff;
-      padding: 10px 12px;
-      text-align: left;
-      white-space: nowrap;
-      font-size: .76rem;
-      font-weight: 600;
-      letter-spacing: .04em;
-    }
+    table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    thead th { background: #1F4E78; color: #fff; padding: 10px 12px;
+               text-align: left; white-space: nowrap; font-size: .75rem;
+               font-weight: 600; letter-spacing: .04em; }
     tbody tr { border-bottom: 1px solid #EDF2F7; }
-    tbody tr:last-child { border-bottom: none; }
     tbody td { padding: 9px 12px; vertical-align: middle; }
-
-    /* Row colours */
     tr.row-validated { background: #E8F5E9; }
-    tr.row-live      { background: #FFFDE7; }
-    tr.row-dead      { background: #FFF3E0; }
+    tr.row-live { background: #FFFDE7; }
+    tr.row-dead { background: #FFF3E0; }
 
-    /* Badges */
-    .badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-size: .72rem;
-      font-weight: 700;
-      white-space: nowrap;
-    }
-    .badge-listicle  { background: #DBEAFE; color: #1D4ED8; }
-    .badge-blog      { background: #D1FAE5; color: #065F46; }
-    .badge-possible  { background: #FEF3C7; color: #92400E; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px;
+             font-size: .7rem; font-weight: 700; white-space: nowrap; }
+    .badge-listicle { background: #DBEAFE; color: #1D4ED8; }
+    .badge-blog { background: #D1FAE5; color: #065F46; }
+    .badge-possible { background: #FEF3C7; color: #92400E; }
     .badge-directory { background: #FCE7F3; color: #9D174D; }
-    .badge-competitor{ background: #F3F4F6; color: #4B5563; }
-    .badge-live      { background: #D1FAE5; color: #065F46; }
-    .badge-dead      { background: #FEE2E2; color: #991B1B; }
-    .badge-valid     { background: #BBF7D0; color: #14532D; }
-    .badge-invalid   { background: #FECACA; color: #7F1D1D; }
-
-    /* Position badge */
-    .pos-badge {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 32px; height: 32px;
-      border-radius: 50%;
-      font-size: .82rem;
-      font-weight: 800;
-      flex-shrink: 0;
-    }
-    .pos-gold   { background: #FEF3C7; color: #92400E; border: 2px solid #F59E0B; }
-    .pos-silver { background: #EFF6FF; color: #1D4ED8; border: 2px solid #93C5FD; }
-    .pos-bronze { background: #F3F4F6; color: #374151; border: 2px solid #D1D5DB; }
-
-    /* Tooltip on table header */
-    .th-tip {
-      position: relative;
-      cursor: help;
-      border-bottom: 1px dashed rgba(255,255,255,.5);
-    }
-    .th-tip::after {
-      content: attr(data-tip);
-      position: absolute;
-      bottom: calc(100% + 8px);
-      left: 50%; transform: translateX(-50%);
-      background: #1A2332;
-      color: #E2E8F0;
-      font-size: .75rem;
-      font-weight: 400;
-      line-height: 1.5;
-      padding: 8px 12px;
-      border-radius: 6px;
-      white-space: normal;
-      width: 260px;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity .15s;
-      z-index: 100;
-      box-shadow: 0 4px 12px rgba(0,0,0,.3);
-    }
-    .th-tip:hover::after { opacity: 1; }
-
+    .badge-competitor { background: #F3F4F6; color: #4B5563; }
+    .badge-service { background: #EDE9FE; color: #6D28D9; }
+    .badge-video { background: #FCE7F3; color: #BE185D; }
+    .badge-live { background: #D1FAE5; color: #065F46; }
+    .badge-dead { background: #FEE2E2; color: #991B1B; }
+    .badge-valid { background: #BBF7D0; color: #14532D; }
     .domain-link { color: #2E75B6; text-decoration: none; font-weight: 600; }
     .domain-link:hover { text-decoration: underline; }
     .open-link { color: #2E75B6; text-decoration: none; font-size: 1rem; }
     .open-link:hover { color: #1F4E78; }
 
-    .density-bar {
-      display: flex; align-items: center; gap: 6px;
+    .pos-badge { display: inline-flex; align-items: center; justify-content: center;
+                  width: 30px; height: 30px; border-radius: 50%;
+                  font-size: .8rem; font-weight: 800; flex-shrink: 0; }
+    .pos-gold { background: #FEF3C7; color: #92400E; border: 2px solid #F59E0B; }
+    .pos-silver { background: #EFF6FF; color: #1D4ED8; border: 2px solid #93C5FD; }
+    .pos-bronze { background: #F3F4F6; color: #374151; border: 2px solid #D1D5DB; }
+
+    /* ── History table ── */
+    .history-toolbar {
+      display: flex; gap: 12px; align-items: center; margin-bottom: 14px;
+      flex-wrap: wrap;
     }
-    .density-pill {
-      display: inline-block;
-      height: 6px; border-radius: 3px;
-      background: #2E75B6;
-      min-width: 2px; max-width: 80px;
+    .history-toolbar input[type=text], .history-toolbar select {
+      padding: 8px 12px; border: 1.5px solid #D0D9E3; border-radius: 7px;
+      font-size: .9rem;
     }
 
-    .no-results {
-      text-align: center; padding: 48px 0;
-      color: #8A9BB0; font-size: .95rem;
+    /* ── Settings ── */
+    .settings-tabs {
+      display: flex; gap: 4px; margin-bottom: 18px;
+      border-bottom: 2px solid #E0E8F0;
     }
+    .settings-tabs button {
+      background: none; border: none; padding: 10px 18px;
+      font-size: .92rem; font-weight: 600; color: #6B7280;
+      cursor: pointer; border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+    }
+    .settings-tabs button.active { color: #1F4E78; border-bottom-color: #1F4E78; }
 
-    .export-row {
-      display: flex; justify-content: flex-end;
-      margin-top: 16px;
+    .settings-panel { display: none; }
+    .settings-panel.active { display: block; }
+
+    .list-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 14px; border: 1px solid #E0E8F0; border-radius: 7px;
+      margin-bottom: 6px; background: #FAFBFC;
     }
+    .list-row .info { display: flex; align-items: center; gap: 12px; }
+    .list-row .actions { display: flex; gap: 6px; }
+
+    /* ── Modal ── */
+    .modal {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.5); z-index: 9999; overflow-y: auto;
+    }
+    .modal-content {
+      background: #fff; max-width: 600px; margin: 40px auto;
+      border-radius: 10px; padding: 24px; box-shadow: 0 4px 24px rgba(0,0,0,.3);
+    }
+    .modal-content h3 { color: #1F4E78; margin-bottom: 16px; }
 
     .error-box {
-      background: #FEE2E2; color: #991B1B;
-      border: 1px solid #FCA5A5;
-      border-radius: 8px; padding: 14px 18px;
-      font-size: .88rem; margin-top: 12px;
-      display: none;
+      background: #FEE2E2; color: #991B1B; border: 1px solid #FCA5A5;
+      border-radius: 8px; padding: 12px 16px; font-size: .88rem;
+      margin-top: 12px; display: none;
     }
+    .success-box {
+      background: #D1FAE5; color: #065F46; border: 1px solid #6EE7B7;
+      border-radius: 8px; padding: 12px 16px; font-size: .88rem;
+      margin-top: 12px;
+    }
+
+    .key-status-ok { color: #16a34a; font-weight: 600; }
+    .key-status-err { color: #dc2626; font-weight: 600; }
+    .key-status-pending { color: #6B7280; font-style: italic; }
   </style>
 </head>
 <body>
 
-<header>
-  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-       stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-  </svg>
-  <div>
-    <h1>SEO Listicles Agent</h1>
-    <span>Find pages that list companies for your keyword — organic results only</span>
-  </div>
-</header>
-
-<main>
-
-  <!-- ── Companies Panel ── -->
-  <div class="card">
-    <div class="card-title">
-      <span style="display:flex;align-items:center;justify-content:space-between">
-        Companies
-        <button onclick="openCompanyModal()" class="btn btn-primary" style="padding:6px 14px;font-size:.85rem;margin:0">
-          + Add Company
-        </button>
-      </span>
+<div class="app">
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+      </svg>
+      SEO Listicles
     </div>
-    <div id="companiesGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:8px">
-      <div style="color:#8A9BB0;padding:16px;text-align:center;font-size:.9rem">
-        No companies yet. Click "+ Add Company" to create your first profile.
-      </div>
-    </div>
-  </div>
+    <nav>
+      <a data-view="dashboard" class="active" onclick="switchView('dashboard')"><span class="icon">🏠</span>Dashboard</a>
+      <a data-view="search"    onclick="switchView('search')"><span class="icon">🔍</span>Search</a>
+      <a data-view="history"   onclick="switchView('history')"><span class="icon">📜</span>History</a>
+      <a data-view="settings"  onclick="switchView('settings')"><span class="icon">⚙</span>Settings</a>
+    </nav>
+    <div class="footer">v1.5 · Local tool</div>
+  </aside>
 
-  <!-- ── Company Modal ── -->
-  <div id="companyModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999">
-    <div style="background:#fff;max-width:520px;margin:60px auto;border-radius:10px;padding:24px;box-shadow:0 4px 24px rgba(0,0,0,.3)">
-      <h3 id="companyModalTitle" style="margin:0 0 18px;color:#1F4E78">Add Company</h3>
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:.85rem;font-weight:600;color:#5A6A7E;margin-bottom:6px">Company Name *</label>
-        <input id="companyName" type="text" placeholder="e.g. WPWeb Infotech"
-               style="width:100%;padding:9px 12px;border:1.5px solid #D0D9E3;border-radius:7px;font-size:.95rem">
+  <!-- ── Content ── -->
+  <main class="content">
+
+    <!-- ━━━━━━━━━━ DASHBOARD VIEW ━━━━━━━━━━ -->
+    <div id="view-dashboard" class="view active">
+      <div class="view-header">
+        <div>
+          <h1>Dashboard</h1>
+          <p>Overview of your SEO outreach tracking</p>
+        </div>
+        <button class="btn btn-primary" onclick="switchView('search')">+ New Search</button>
       </div>
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:.85rem;font-weight:600;color:#5A6A7E;margin-bottom:6px">Domain *</label>
-        <input id="companyDomain" type="text" placeholder="e.g. wpwebinfotech.com"
-               style="width:100%;padding:9px 12px;border:1.5px solid #D0D9E3;border-radius:7px;font-size:.95rem">
+
+      <div id="dashboardStats" class="stats-grid"></div>
+
+      <div class="card">
+        <div class="card-title">Companies Overview</div>
+        <div id="dashboardCompanies" class="companies-grid"></div>
       </div>
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:.85rem;font-weight:600;color:#5A6A7E;margin-bottom:6px">
-          Custom Name Variants <span style="font-weight:400;color:#8A9BB0">(optional, one per line)</span>
-        </label>
-        <textarea id="companyVariants" rows="4" placeholder="WPWeb Infotech&#10;WPWEB Infotech&#10;WPWeb"
-                  style="width:100%;padding:9px 12px;border:1.5px solid #D0D9E3;border-radius:7px;font-size:.9rem;font-family:monospace"></textarea>
-        <p style="font-size:.78rem;color:#8A9BB0;margin-top:4px">
-          Auto-generated from name + domain. Add custom variants for better detection of text-only mentions.
-        </p>
+
+      <div class="chart-row">
+        <div class="chart-card">
+          <div class="card-title">Search Activity (Last 30 Days)</div>
+          <canvas id="activityChart" height="100"></canvas>
+        </div>
+        <div class="chart-card">
+          <div class="card-title">Listed Pages per Company</div>
+          <canvas id="listedChart" height="100"></canvas>
+        </div>
       </div>
-      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
-        <button onclick="closeCompanyModal()" style="padding:9px 18px;background:#E0E8F0;color:#1F4E78;border:none;border-radius:7px;cursor:pointer;font-weight:600">
-          Cancel
-        </button>
-        <button onclick="saveCompany()" class="btn btn-primary" style="margin:0">
-          Save
-        </button>
+
+      <div class="card">
+        <div class="card-title">Recent Activity</div>
+        <div id="recentActivity"></div>
       </div>
     </div>
-  </div>
 
-  <!-- ── Search form ── -->
-  <div class="card">
-    <div class="card-title">Search</div>
-    <div class="form-grid">
-      <div class="field">
-        <label for="keyword">Keyword *</label>
-        <input id="keyword" type="text" placeholder='e.g. "best wordpress development companies"'
-               autocomplete="off" spellcheck="false">
+    <!-- ━━━━━━━━━━ SEARCH VIEW ━━━━━━━━━━ -->
+    <div id="view-search" class="view">
+      <div class="view-header">
+        <div>
+          <h1>New Search</h1>
+          <p>Find listicle pages for any keyword. Optionally detect if your domain is listed.</p>
+        </div>
+        <div class="radio-group" style="font-size:.8rem">
+          <input type="radio" name="searchMode" id="mode-single" value="single" checked onchange="toggleSearchMode()">
+          <label for="mode-single">Single Keyword</label>
+          <input type="radio" name="searchMode" id="mode-bulk" value="bulk" onchange="toggleSearchMode()">
+          <label for="mode-bulk">Bulk Keywords</label>
+        </div>
       </div>
-      <div class="field">
-        <label for="companySelect">Company (optional)</label>
-        <select id="companySelect" onchange="onCompanyChange()">
-          <option value="">— None (no domain tracking) —</option>
-        </select>
-        <input id="domain" type="hidden">
+
+      <div class="card">
+        <div id="singleSearchForm">
+          <div class="form-grid">
+            <div class="field">
+              <label for="keyword">Keyword *</label>
+              <input id="keyword" type="text" placeholder='e.g. "best wordpress development companies"'
+                     autocomplete="off" spellcheck="false">
+            </div>
+            <div class="field">
+              <label for="companySelect">Company (optional)</label>
+              <select id="companySelect" onchange="onCompanyChange()">
+                <option value="">— None (no domain tracking) —</option>
+              </select>
+              <input id="domain" type="hidden">
+            </div>
+            <div class="field">
+              <label for="region">Region</label>
+              <select id="region">
+                <option value="us">United States</option>
+                <option value="uk">United Kingdom</option>
+                <option value="ca">Canada</option>
+                <option value="au">Australia</option>
+                <option value="in">India</option>
+                <option value="de">Germany</option>
+                <option value="fr">France</option>
+                <option value="sg">Singapore</option>
+                <option value="ae">UAE</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="targetListicles">Target listicles</label>
+              <select id="targetListicles">
+                <option value="5">5 listicles</option>
+                <option value="10" selected>10 listicles</option>
+                <option value="15">15 listicles</option>
+                <option value="20">20 listicles</option>
+                <option value="30">30 listicles</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="searchBtn" onclick="startSearch()" style="margin-top:16px">
+            🔍 Find Listicles
+          </button>
+        </div>
+
+        <div id="bulkSearchForm" style="display:none">
+          <div class="form-grid" style="grid-template-columns:1fr 200px 140px 160px">
+            <div class="field" style="grid-column:1 / span 2">
+              <label for="bulkKeywords">Keywords (one per line) *</label>
+              <textarea id="bulkKeywords" rows="6"
+                placeholder="top wordpress development companies&#10;best wordpress agency india&#10;hire wordpress developers usa"
+                style="font-family:monospace"></textarea>
+            </div>
+            <div class="field">
+              <label for="bulkCompanySelect">Company</label>
+              <select id="bulkCompanySelect">
+                <option value="">— None —</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="bulkRegion">Region</label>
+              <select id="bulkRegion">
+                <option value="us">United States</option>
+                <option value="uk">United Kingdom</option>
+                <option value="ca">Canada</option>
+                <option value="au">Australia</option>
+                <option value="in">India</option>
+                <option value="de">Germany</option>
+                <option value="fr">France</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="bulkTargetListicles">Per keyword</label>
+              <select id="bulkTargetListicles">
+                <option value="5" selected>5 listicles</option>
+                <option value="10">10 listicles</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="bulkSearchBtn" onclick="startBulkSearch()" style="margin-top:16px">
+            🚀 Run All Keywords
+          </button>
+        </div>
+        <div class="error-box" id="errorBox"></div>
       </div>
-      <div class="field">
-        <label for="region">Region</label>
-        <select id="region">
-          <option value="us">United States</option>
-          <option value="uk">United Kingdom</option>
-          <option value="ca">Canada</option>
-          <option value="au">Australia</option>
-          <option value="in">India</option>
-          <option value="de">Germany</option>
-          <option value="fr">France</option>
-          <option value="sg">Singapore</option>
-          <option value="ae">UAE</option>
-        </select>
+
+      <div class="card" id="progressCard" style="display:none">
+        <div class="card-title">
+          <span class="spinner" id="spinner"></span>
+          <span id="progressTitle">Running…</span>
+        </div>
+        <div class="log-box" id="logBox"></div>
       </div>
-      <div class="field">
-        <label for="targetListicles">Target listicles</label>
-        <select id="targetListicles">
-          <option value="5">5 listicles</option>
-          <option value="10" selected>10 listicles</option>
-          <option value="15">15 listicles</option>
-          <option value="20">20 listicles</option>
-          <option value="30">30 listicles</option>
-        </select>
-      </div>
-      <div class="field">
-        <label>Mode</label>
-        <div class="radio-group">
-          <input type="radio" name="mode" id="mode-free" value="free" checked>
-          <label for="mode-free">Free</label>
-          <input type="radio" name="mode" id="mode-semrush" value="semrush">
-          <label for="mode-semrush">Semrush</label>
+
+      <div class="card" id="resultsCard" style="display:none">
+        <div class="card-title" id="resultsTitle">Results</div>
+        <div class="stats-bar" id="statsBar"></div>
+        <div class="filter-bar">
+          <span style="font-size:.8rem;font-weight:600;color:#5A6A7E">Show:</span>
+          <button class="filter-btn active" onclick="setFilter('all', this)">All</button>
+          <button class="filter-btn" onclick="setFilter('listicle', this)">Listicles</button>
+          <button class="filter-btn" onclick="setFilter('listed', this)">Listed only</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>SERP</th><th>Domain</th><th>Page Type</th>
+                <th>Status</th><th>Pos on Page</th><th>Link Type</th><th>↗</th>
+              </tr>
+            </thead>
+            <tbody id="resultsBody"></tbody>
+          </table>
         </div>
       </div>
     </div>
 
-    <div class="row-options">
-      <label class="toggle">
-        <input type="checkbox" id="contacts">
-        Find email contacts
-      </label>
-      <span style="font-size:.78rem;color:#8A9BB0;margin-left:auto">
-        Directories &amp; sponsored results are automatically excluded
-      </span>
+    <!-- ━━━━━━━━━━ HISTORY VIEW ━━━━━━━━━━ -->
+    <div id="view-history" class="view">
+      <div class="view-header">
+        <div>
+          <h1>Search History</h1>
+          <p>All past searches. View cached results, re-run, or export.</p>
+        </div>
+        <button class="btn btn-red btn-sm" onclick="clearAllHistory()">🗑 Clear All</button>
+      </div>
+
+      <div class="card">
+        <div class="history-toolbar">
+          <input type="text" id="historySearch" placeholder="🔍 Search within history..."
+                 oninput="filterHistory()" style="flex:1;min-width:200px">
+          <select id="historyDomainFilter" onchange="loadHistory(this.value)">
+            <option value="">All searches</option>
+            <option value="__none__">No domain (keyword only)</option>
+          </select>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="selectAllHistory" onchange="toggleAllHistory(this)"></th>
+                <th>Keyword & Location</th>
+                <th>Domain</th>
+                <th>Date</th>
+                <th>Results</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody"></tbody>
+          </table>
+        </div>
+
+        <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-green" onclick="exportSelected()">⬇ Export Selected</button>
+          <button class="btn btn-green" onclick="exportAll()">⬇ Export All</button>
+        </div>
+      </div>
     </div>
 
-    <button class="btn btn-primary" id="searchBtn" onclick="startSearch()">
-      Find Listicles
-    </button>
+    <!-- ━━━━━━━━━━ SETTINGS VIEW ━━━━━━━━━━ -->
+    <div id="view-settings" class="view">
+      <div class="view-header">
+        <div>
+          <h1>Settings</h1>
+          <p>Manage companies, API keys, and detection rules.</p>
+        </div>
+      </div>
 
-    <div class="metrics-info">
-      <strong>SERP Position</strong> — The rank Google assigned this page. This is Google's trust signal — if it ranks on page 1, Google trusts it.
-      <br><br>
-      <strong>Your domain (optional)</strong> — Enter your domain (e.g., wpwebinfotech.com). If provided, the tool will automatically scan each listicle/aggregator page and detect if your domain is listed, at what position, and whether it's a backlink or mention. This info populates the Excel columns automatically.
-      <br><br>
-      <strong>Listicles vs Aggregators:</strong> Listicles are blogs/service pages listing companies. Aggregators (Clutch, G2, GoodFirms) are directories — both appear in export, but you'll likely want to approach listicles first.
-      <br><br>
-      <strong>Authority (OPR)</strong> — Open PageRank score 0–100, a free proxy. Blank/low scores are common — OPR doesn't index every domain. Google uses 200+ signals (relevance, quality, UX, freshness) that OPR doesn't measure. Use SERP Position as the stronger signal.
-      <br><br>
-      <strong>Validated</strong> — URL is live (HTTP 200) <em>and</em> page has ≥5 list items + company mentions.
+      <div class="settings-tabs">
+        <button class="active" onclick="switchSetting('companies', this)">Companies</button>
+        <button onclick="switchSetting('apikeys', this)">API Keys</button>
+        <button onclick="switchSetting('aggregators', this)">Aggregators</button>
+        <button onclick="switchSetting('videos', this)">Video Domains</button>
+      </div>
+
+      <!-- COMPANIES -->
+      <div id="setting-companies" class="settings-panel active">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <div class="card-title" style="margin:0">Company Profiles</div>
+            <button class="btn btn-primary btn-sm" onclick="openCompanyModal()">+ Add Company</button>
+          </div>
+          <div id="settingsCompaniesGrid" class="companies-grid"></div>
+        </div>
+      </div>
+
+      <!-- API KEYS -->
+      <div id="setting-apikeys" class="settings-panel">
+        <div class="card">
+          <div class="card-title">API Keys & Usage</div>
+          <p style="font-size:.85rem;color:#6B7280;margin-bottom:14px">
+            Add API keys for the providers you want to use. Test the connection and see your usage.
+          </p>
+          <div id="apiKeysList"></div>
+          <div style="margin-top:18px">
+            <button class="btn btn-primary btn-sm" onclick="openApiKeyModal()">+ Add / Update Key</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- AGGREGATORS -->
+      <div id="setting-aggregators" class="settings-panel">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <div class="card-title" style="margin:0">Aggregator Domains</div>
+            <div style="display:flex;gap:6px">
+              <input id="newAggregator" type="text" placeholder="e.g. quora.com"
+                     style="padding:6px 10px;border:1.5px solid #D0D9E3;border-radius:6px;font-size:.85rem;width:200px">
+              <button class="btn btn-primary btn-sm" onclick="addAggregator()">Add</button>
+            </div>
+          </div>
+          <p style="font-size:.8rem;color:#6B7280;margin-bottom:14px">
+            These domains are classified as <strong>Aggregator</strong> (e.g., Clutch, G2). They appear in search results but don't count toward your listicle target.
+          </p>
+          <div id="aggregatorsList"></div>
+        </div>
+      </div>
+
+      <!-- VIDEOS -->
+      <div id="setting-videos" class="settings-panel">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <div class="card-title" style="margin:0">Video Domains</div>
+            <div style="display:flex;gap:6px">
+              <input id="newVideoDomain" type="text" placeholder="e.g. wistia.com"
+                     style="padding:6px 10px;border:1.5px solid #D0D9E3;border-radius:6px;font-size:.85rem;width:200px">
+              <button class="btn btn-primary btn-sm" onclick="addVideoDomain()">Add</button>
+            </div>
+          </div>
+          <p style="font-size:.8rem;color:#6B7280;margin-bottom:14px">
+            Domains classified as <strong>Video</strong> (YouTube, Vimeo, etc.) — kept out of the listicle category.
+          </p>
+          <div id="videoDomainsList"></div>
+        </div>
+      </div>
     </div>
+  </main>
+</div>
 
-    <div class="error-box" id="errorBox"></div>
+<!-- ━━━━━━━━━━ MODALS ━━━━━━━━━━ -->
+
+<!-- Company Modal -->
+<div id="companyModal" class="modal">
+  <div class="modal-content">
+    <h3 id="companyModalTitle">Add Company</h3>
+    <div class="field" style="margin-bottom:12px">
+      <label>Company Name *</label>
+      <input id="companyName" type="text" placeholder="e.g. WPWeb Infotech">
+    </div>
+    <div class="field" style="margin-bottom:12px">
+      <label>Domain *</label>
+      <input id="companyDomain" type="text" placeholder="e.g. wpwebinfotech.com">
+    </div>
+    <div class="field" style="margin-bottom:12px">
+      <label>Custom Name Variants (one per line)</label>
+      <textarea id="companyVariants" rows="4" style="font-family:monospace;font-size:.85rem"
+                placeholder="WPWeb Infotech&#10;WPWEB Infotech&#10;WPWeb"></textarea>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn btn-ghost" onclick="closeModal('companyModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCompany()">Save</button>
+    </div>
   </div>
+</div>
 
-  <!-- ── Search History ── -->
-  <div class="card">
-    <div class="card-title">Search History & Export</div>
-    <div style="margin-bottom: 16px;">
-      <label for="historyDomainFilter" style="font-size:.85rem;font-weight:600;color:#5A6A7E;margin-right:8px">
-        Filter by domain:
-      </label>
-      <select id="historyDomainFilter" style="width:200px;padding:8px;border:1.5px solid #D0D9E3;border-radius:7px;font-size:.95rem">
-        <option value="">All searches</option>
-        <option value="__none__">No domain (keyword only)</option>
+<!-- API Key Modal -->
+<div id="apiKeyModal" class="modal">
+  <div class="modal-content">
+    <h3>Add or Update API Key</h3>
+    <div class="field" style="margin-bottom:12px">
+      <label>Provider *</label>
+      <select id="apiProvider" onchange="onApiProviderChange()">
+        <option value="serper">Serper.dev (SERP — recommended)</option>
+        <option value="google_cse">Google Custom Search</option>
+        <option value="openpagerank">Open PageRank (authority)</option>
+        <option value="semrush">Semrush (premium)</option>
       </select>
     </div>
-
-    <div id="historyList" style="max-height:300px;overflow-y:auto;border:1px solid #E0E8F0;border-radius:8px">
-      <table style="width:100%;font-size:.82rem;border-collapse:collapse">
-        <thead style="background:#F3F4F6;position:sticky;top:0">
-          <tr>
-            <th style="padding:8px;text-align:left;font-weight:600">Keyword & Location</th>
-            <th style="padding:8px;text-align:left;font-weight:600">Domain</th>
-            <th style="padding:8px;text-align:left;font-weight:600">Date</th>
-            <th style="padding:8px;text-align:left;font-weight:600">Results</th>
-            <th style="padding:8px;text-align:center;font-weight:600">
-              <input type="checkbox" id="selectAllHistory" title="Select all">
-            </th>
-          </tr>
-        </thead>
-        <tbody id="historyTableBody"></tbody>
-      </table>
+    <div class="field" style="margin-bottom:12px">
+      <label>API Key *</label>
+      <input id="apiKey" type="text" autocomplete="off" placeholder="Paste your API key here">
     </div>
-
-    <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-      <button class="btn btn-green" onclick="exportSelected()">
-        ⬇ Export Selected
-      </button>
-      <button class="btn btn-green" onclick="exportAll()">
-        ⬇ Export All
-      </button>
-      <button onclick="clearAllHistory()" style="padding:10px 20px;border-radius:7px;border:1.5px solid #dc2626;background:#fff;color:#dc2626;font-size:.9rem;font-weight:600;cursor:pointer;margin-left:auto">
-        🗑 Clear All History
-      </button>
+    <div class="field" id="apiCxField" style="margin-bottom:12px;display:none">
+      <label>Search Engine ID (cx)</label>
+      <input id="apiCx" type="text" autocomplete="off" placeholder="Required for Google CSE">
+    </div>
+    <div id="apiKeyTestResult" style="font-size:.85rem;margin-top:10px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn btn-ghost" onclick="closeModal('apiKeyModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveApiKey()">Save</button>
     </div>
   </div>
+</div>
 
-  <!-- ── Progress ── -->
-  <div class="card" id="progressCard">
-    <div class="card-title">
-      <span class="spinner" id="spinner"></span>
-      <span id="progressTitle">Running…</span>
-    </div>
-    <div class="log-box" id="logBox"></div>
-  </div>
-
-  <!-- ── Results ── -->
-  <div class="card" id="resultsCard">
-    <div class="card-title">Results</div>
-
-    <div class="stats-bar" id="statsBar"></div>
-
-    <div class="filter-bar">
-      <span style="font-size:.8rem;font-weight:600;color:#5A6A7E;margin-right:4px">Show:</span>
-      <button class="filter-btn active" onclick="setFilter('all', this)">All</button>
-      <button class="filter-btn" onclick="setFilter('listicle', this)">Listicles only</button>
-      <button class="filter-btn" onclick="setFilter('validated', this)">Validated only</button>
-    </div>
-
-    <div class="table-wrap">
-      <table id="resultsTable">
-        <thead>
-          <tr>
-            <th class="th-tip" data-tip="Google's actual ranking position. Position 1–3 = Google's top picks. This is the strongest trust signal — more reliable than any third-party authority score.">SERP Rank</th>
-            <th>Domain</th>
-            <th>Page Type</th>
-            <th class="th-tip" data-tip="Open PageRank score (0–100, free mode). This is a third-party proxy — NOT what Google uses. Low or blank scores are normal; many domains aren't in OPR's index yet. Use SERP Rank as the real trust signal.">Authority ⓘ</th>
-            <th>KW Density</th>
-            <th>Status</th>
-            <th>Validated</th>
-            <th>Email</th>
-            <th>↗</th>
-          </tr>
-        </thead>
-        <tbody id="resultsBody"></tbody>
-      </table>
-    </div>
-
-    <div class="export-row">
-      <button class="btn btn-green" onclick="exportExcel()">
-        ⬇ Export to Excel
-      </button>
+<!-- Company Export Modal -->
+<div id="exportModal" class="modal">
+  <div class="modal-content" style="max-width:720px">
+    <h3 id="exportModalTitle">Export Report</h3>
+    <div id="exportModalBody"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn btn-ghost" onclick="closeModal('exportModal')">Close</button>
     </div>
   </div>
+</div>
 
-  <!-- ── Verify URL Modal ── -->
-  <div id="verifyModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.5);z-index:9999;overflow-y:auto">
-    <div style="background:#fff;max-width:800px;margin:40px auto;border-radius:10px;box-shadow:0 4px 24px rgba(0,0,0,.3);padding:24px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
-        <h3 style="margin:0;color:#1F4E78">🔍 URL Verification Report</h3>
-        <button onclick="closeVerifyModal()" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#666">×</button>
-      </div>
-      <div id="verifyContent">
-        <div style="text-align:center;padding:40px;color:#666">
-          <div class="spinner"></div>
-          <p>Re-fetching URL...</p>
-        </div>
-      </div>
-      <div style="margin-top:16px;text-align:right">
-        <button onclick="closeVerifyModal()" class="btn"
-                style="background:#E0E8F0;color:#1F4E78;padding:8px 18px;border-radius:7px;border:none;cursor:pointer">
-          Close
-        </button>
-      </div>
+<!-- Verify URL Modal -->
+<div id="verifyModal" class="modal">
+  <div class="modal-content" style="max-width:800px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="margin:0">🔍 URL Verification Report</h3>
+      <button onclick="closeModal('verifyModal')"
+              style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#666">×</button>
     </div>
+    <div id="verifyContent"></div>
   </div>
-
-</main>
+</div>
 
 <script>
-  // ── State ─────────────────────────────────────────────────────────────────
+  // ============================================================
+  // STATE
+  // ============================================================
+  let _companies = [];
+  let _historyData = [];
+  let _historyFiltered = [];
+  let _selectedSearches = new Set();
   let _allResults = [];
-  let _keyword    = "";
-  let _filter     = "all";
-  let _runId      = null;
+  let _resultsFilter = "all";
+  let _editingCompanyId = null;
+  let _exportingCompanyId = null;
+  let _currentRunId = null;
+  let _activeView = "dashboard";
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // Charts
+  let _activityChart = null, _listedChart = null;
+
+  // ============================================================
+  // HELPERS
+  // ============================================================
   function $(id) { return document.getElementById(id); }
-
-  function appendLog(msg) {
-    const box = $("logBox");
-    box.textContent += msg + "\n";
-    box.scrollTop = box.scrollHeight;
-  }
 
   function showError(msg) {
     const box = $("errorBox");
@@ -616,169 +714,196 @@
     box.style.display = "block";
   }
 
-  function positionBadge(pos) {
-    const n   = parseInt(pos) || pos;
-    const cls = n <= 3  ? "pos-gold"
-              : n <= 10 ? "pos-silver"
-              :            "pos-bronze";
-    return `<span class="pos-badge ${cls}" title="Google SERP position ${n}">${n}</span>`;
+  function closeModal(id) { $(id).style.display = "none"; }
+
+  function escapeHtml(s) {
+    if (s == null) return "";
+    return String(s).replace(/[&<>"']/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
-  function authorityCell(score) {
-    if (score === "" || score === null || score === undefined)
-      return `<span style="color:#aaa;font-size:.78rem" title="Not in OPR's index — does not mean the site is weak">—</span>`;
-    const n   = parseFloat(score);
-    const color = n >= 50 ? "#16a34a" : n >= 25 ? "#2E75B6" : "#8A9BB0";
-    return `<span style="font-weight:700;color:${color}">${score}</span>
-            <span style="font-size:.7rem;color:#A0AEC0;margin-left:2px">/100</span>`;
+  // ============================================================
+  // VIEW SWITCHING
+  // ============================================================
+  function switchView(view) {
+    _activeView = view;
+    document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+    $("view-" + view).classList.add("active");
+    document.querySelectorAll("aside.sidebar nav a").forEach(a => {
+      a.classList.toggle("active", a.dataset.view === view);
+    });
+    // Auto-refresh data per view
+    if (view === "dashboard") loadDashboard();
+    if (view === "history") loadHistory();
+    if (view === "settings") {
+      loadCompanies();
+      loadApiKeys();
+      loadAggregators();
+      loadVideoDomains();
+    }
   }
 
-  function pageBadge(type) {
-    const map = {
-      "Listicle (blog post)": ["badge-listicle",  "Listicle"],
-      "Listicle (Top/Best)":  ["badge-listicle",  "Top/Best"],
-      "Blog / Article":       ["badge-blog",       "Blog"],
-      "Possible listicle":    ["badge-possible",   "Possible"],
-      "Aggregator":           ["badge-directory",  "Aggregator"],
-      "Competitor (homepage)":["badge-competitor", "Homepage"],
-    };
-    const [cls, label] = map[type] || ["badge-competitor", "Other"];
-    return `<span class="badge ${cls}">${label}</span>`;
+  function switchSetting(panel, btn) {
+    document.querySelectorAll(".settings-panel").forEach(p => p.classList.remove("active"));
+    $("setting-" + panel).classList.add("active");
+    document.querySelectorAll(".settings-tabs button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
   }
 
-  function statusBadge(live, validated) {
-    if (live === "")  return "<span style='color:#aaa'>—</span>";
-    if (validated === true) return `<span class="badge badge-valid">✓ Validated</span>`;
-    if (live === true)      return `<span class="badge badge-live">Live</span>`;
-    return `<span class="badge badge-dead">Dead</span>`;
+  function toggleSearchMode() {
+    const mode = document.querySelector('input[name="searchMode"]:checked').value;
+    $("singleSearchForm").style.display = mode === "single" ? "block" : "none";
+    $("bulkSearchForm").style.display   = mode === "bulk"   ? "block" : "none";
   }
 
-  function densityCell(density) {
-    if (density === "" || density === null || density === undefined)
-      return "<span style='color:#aaa'>—</span>";
-    const pct   = parseFloat(density);
-    const width = Math.min(pct * 20, 80);
-    const color = pct > 4 ? "#E53E3E" : pct >= 1 ? "#2E75B6" : "#A0AEC0";
-    return `<div class="density-bar">
-      <div class="density-pill" style="width:${width}px;background:${color}"></div>
-      <span>${pct.toFixed(2)}%</span>
-    </div>`;
+  // ============================================================
+  // DASHBOARD
+  // ============================================================
+  async function loadDashboard() {
+    try {
+      const data = await (await fetch("/api/dashboard")).json();
+      renderDashboardStats(data.totals);
+      renderDashboardCompanies(data.company_stats);
+      renderActivityChart(data.activity_30d);
+      renderListedChart(data.company_stats);
+      renderRecentActivity(data.recent_searches);
+    } catch (e) {
+      console.error("Dashboard load error:", e);
+    }
   }
 
-  function rowClass(r) {
-    if (r["Validated?"] === true)  return "row-validated";
-    if (r["Live?"]      === true)  return "row-live";
-    if (r["Live?"]      === false) return "row-dead";
-    return "";
+  function renderDashboardStats(t) {
+    $("dashboardStats").innerHTML = `
+      <div class="stat-card companies">
+        <div class="label">Companies</div>
+        <div class="value">${t.companies}</div>
+        <div class="icon">🏢</div>
+      </div>
+      <div class="stat-card searches">
+        <div class="label">Searches</div>
+        <div class="value">${t.searches}</div>
+        <div class="icon">🔍</div>
+      </div>
+      <div class="stat-card listed">
+        <div class="label">Listed Pages</div>
+        <div class="value">${t.listed}</div>
+        <div class="icon">✓</div>
+      </div>
+      <div class="stat-card results">
+        <div class="label">Total Results</div>
+        <div class="value">${t.results}</div>
+        <div class="icon">🌐</div>
+      </div>
+    `;
   }
 
-  // ── Render table ──────────────────────────────────────────────────────────
-  function renderTable() {
-    let rows = _allResults;
-    if (_filter === "listicle")  rows = rows.filter(r => r["Listicle Target?"] === "YES");
-    if (_filter === "validated") rows = rows.filter(r => r["Validated?"] === true);
-
-    const tbody = $("resultsBody");
-    if (rows.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="9" class="no-results">No results match this filter.</td></tr>`;
+  function renderDashboardCompanies(companies) {
+    if (!companies || companies.length === 0) {
+      $("dashboardCompanies").innerHTML = `<p style="color:#6B7280;padding:14px">No companies yet. <a href="#" onclick="switchView('settings')">Add one →</a></p>`;
       return;
     }
-    tbody.innerHTML = rows.map(r => {
-      const domain  = r["Domain"]   || "";
-      const url     = r["URL"]      || "#";
-      const email   = r["Email"]    || "";
-      const cls     = rowClass(r);
-      return `<tr class="${cls}">
-        <td style="text-align:center">${positionBadge(r["Position"])}</td>
-        <td><a class="domain-link" href="${url}" target="_blank">${domain}</a></td>
-        <td>${pageBadge(r["Page Type"])}</td>
-        <td>${authorityCell(r["Authority Score"])}</td>
-        <td>${densityCell(r["Keyword Density %"])}</td>
-        <td>${statusBadge(r["Live?"], r["Validated?"])}</td>
-        <td>${r["Validated?"] === true
-              ? '<span style="color:#16a34a;font-weight:700">✓</span>'
-              : r["Validated?"] === false
-                ? '<span style="color:#dc2626">✗</span>'
-                : '<span style="color:#aaa">—</span>'}</td>
-        <td style="font-size:.78rem;max-width:180px;overflow:hidden;text-overflow:ellipsis">
-          ${email
-            ? `<a href="mailto:${email}" style="color:#2E75B6">${email}</a>`
-            : '<span style="color:#aaa">—</span>'}
-        </td>
-        <td style="white-space:nowrap">
-          <a class="open-link" href="${url}" target="_blank" title="Open URL">↗</a>
-          <button onclick="openVerifyModal('${url.replace(/'/g, "\\'")}', '${(r.Domain || '').replace(/'/g, "\\'")}')"
-                  title="Re-verify this URL"
-                  style="background:none;border:none;cursor:pointer;font-size:1rem;color:#2E75B6;padding:0 4px;margin-left:4px">
-            🔍
-          </button>
-        </td>
-      </tr>`;
-    }).join("");
+    $("dashboardCompanies").innerHTML = companies.map(c => `
+      <div class="company-card">
+        <h4>${escapeHtml(c.name)}</h4>
+        <div class="domain-text">🌐 ${escapeHtml(c.domain)}</div>
+        <div class="metrics">
+          <div class="metric"><div class="val">${c.searches}</div><div class="lbl">Searches</div></div>
+          <div class="metric"><div class="val">${c.listed}</div><div class="lbl">Listed</div></div>
+          <div class="metric"><div class="val">${c.avg_position != null ? c.avg_position : "—"}</div><div class="lbl">Avg Pos</div></div>
+        </div>
+        <div class="actions">
+          <button onclick="selectCompanyForSearch(${c.id})" style="background:#1F4E78;color:#fff">+ New Search</button>
+          <button onclick="openCompanyExport(${c.id})" style="background:#217346;color:#fff">⬇ Export</button>
+        </div>
+      </div>
+    `).join("");
   }
 
-  function renderStats(results) {
-    const total     = results.length;
-    const listicles = results.filter(r => r["Listicle Target?"] === "YES").length;
-    const validated = results.filter(r => r["Validated?"] === true).length;
-    const live      = results.filter(r => r["Live?"] === true).length;
-    $("statsBar").innerHTML = [
-      [total,     "SERP Results"],
-      [listicles, "Listicles found"],
-      [validated, "Validated"],
-      [live,      "Live URLs"],
-    ].map(([n, l]) => `<div class="stat"><div class="num">${n}</div><div class="lbl">${l}</div></div>`)
-     .join("");
+  function renderActivityChart(activity) {
+    const ctx = $("activityChart").getContext("2d");
+    if (_activityChart) _activityChart.destroy();
+    const labels = activity.map(a => a.date.slice(5));
+    const data   = activity.map(a => a.count);
+    _activityChart = new Chart(ctx, {
+      type: "line",
+      data: { labels, datasets: [{
+        label: "Searches per day", data,
+        backgroundColor: "rgba(37,99,235,.15)",
+        borderColor: "#2563EB", tension: .3, fill: true,
+      }] },
+      options: { responsive: true, maintainAspectRatio: false,
+                 plugins: { legend: { display: false } },
+                 scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
+    });
   }
 
-  function setFilter(f, btn) {
-    _filter = f;
-    document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    renderTable();
+  function renderListedChart(companies) {
+    const ctx = $("listedChart").getContext("2d");
+    if (_listedChart) _listedChart.destroy();
+    if (!companies || companies.length === 0) { return; }
+    _listedChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels: companies.map(c => c.name),
+        datasets: [{ label: "Listed", data: companies.map(c => c.listed),
+                     backgroundColor: "#16A34A" }],
+      },
+      options: { responsive: true, maintainAspectRatio: false,
+                 plugins: { legend: { display: false } },
+                 scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
+    });
   }
 
-  // ── Search ────────────────────────────────────────────────────────────────
+  function renderRecentActivity(searches) {
+    if (!searches || searches.length === 0) {
+      $("recentActivity").innerHTML = `<p style="color:#6B7280">No searches yet.</p>`;
+      return;
+    }
+    $("recentActivity").innerHTML = `<table style="width:100%;font-size:.85rem">
+      <thead><tr><th>Keyword</th><th>Region</th><th>Company</th><th>Results</th><th>When</th></tr></thead>
+      <tbody>${searches.map(s => `
+        <tr style="border-bottom:1px solid #EDF2F7;cursor:pointer" onclick="viewCachedSearch(${s.search_id})">
+          <td style="padding:8px"><strong>${escapeHtml(s.keyword)}</strong></td>
+          <td style="padding:8px">${(s.location || 'us').toUpperCase()}</td>
+          <td style="padding:8px">${escapeHtml(s.company)}</td>
+          <td style="padding:8px">${s.result_count}</td>
+          <td style="padding:8px;color:#6B7280">${s.timestamp ? new Date(s.timestamp).toLocaleString() : '—'}</td>
+        </tr>`).join("")}
+      </tbody></table>`;
+  }
+
+  // ============================================================
+  // SEARCH (single + bulk)
+  // ============================================================
   async function startSearch() {
     const keyword = $("keyword").value.trim();
     if (!keyword) { $("keyword").focus(); return; }
 
-    _keyword    = keyword;
-    _allResults = [];
-    _filter     = "all";
-
-    // Reset UI
-    $("errorBox").style.display = "none";
-    $("logBox").textContent     = "";
-    $("progressCard").style.display  = "block";
-    $("resultsCard").style.display   = "none";
-    $("progressTitle").textContent   = "Running…";
-    $("spinner").style.display       = "inline-block";
-    $("searchBtn").disabled          = true;
-
-    const mode             = document.querySelector('input[name="mode"]:checked').value;
-    const region           = $("region").value;
-    const domain           = $("domain").value.trim();
-    const company_id_raw   = $("companySelect").value;
-    const company_id       = company_id_raw ? parseInt(company_id_raw) : null;
+    const company_id_raw = $("companySelect").value;
+    const company_id = company_id_raw ? parseInt(company_id_raw) : null;
+    const domain = $("domain").value.trim();
+    const region = $("region").value;
     const target_listicles = parseInt($("targetListicles").value);
-    const contacts         = $("contacts").checked;
 
-    // Start search
+    resetSearchUI();
+    $("progressCard").style.display = "block";
+    $("searchBtn").disabled = true;
+
     let runId;
     try {
       const resp = await fetch("/api/search", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ keyword, domain, company_id, mode, region, target_listicles, contacts }),
+        body: JSON.stringify({
+          keyword, domain, company_id, mode: "free", region,
+          target_listicles, max_pages: 20, contacts: false,
+        }),
       });
       if (!resp.ok) {
         const err = await resp.json();
         throw new Error(err.detail || resp.statusText);
       }
-      const data = await resp.json();
-      runId = data.run_id;
-      _runId = runId;
+      runId = (await resp.json()).run_id;
     } catch (e) {
       showError(e.message);
       $("searchBtn").disabled = false;
@@ -786,414 +911,410 @@
       return;
     }
 
-    // Stream progress
-    const evtSource = new EventSource(`/api/stream/${runId}`);
+    streamProgress(runId, false);
+  }
 
-    evtSource.onmessage = (e) => {
+  async function startBulkSearch() {
+    const lines = $("bulkKeywords").value.split("\n").map(l => l.trim()).filter(l => l);
+    if (lines.length === 0) { alert("Enter at least one keyword"); return; }
+
+    const company_id_raw = $("bulkCompanySelect").value;
+    const company_id = company_id_raw ? parseInt(company_id_raw) : null;
+    const region = $("bulkRegion").value;
+    const target_listicles = parseInt($("bulkTargetListicles").value);
+
+    resetSearchUI();
+    $("progressCard").style.display = "block";
+    $("bulkSearchBtn").disabled = true;
+
+    let runId;
+    try {
+      const resp = await fetch("/api/bulk-search", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          keywords: lines, company_id, region,
+          target_listicles, max_pages: 10, mode: "free", domain: "",
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.detail || resp.statusText);
+      }
+      runId = (await resp.json()).run_id;
+    } catch (e) {
+      showError(e.message);
+      $("bulkSearchBtn").disabled = false;
+      $("spinner").style.display = "none";
+      return;
+    }
+
+    streamProgress(runId, true);
+  }
+
+  function resetSearchUI() {
+    $("errorBox").style.display = "none";
+    $("logBox").textContent = "";
+    $("resultsCard").style.display = "none";
+    $("progressTitle").textContent = "Running…";
+    $("spinner").style.display = "inline-block";
+  }
+
+  function appendLog(msg) {
+    const box = $("logBox");
+    box.textContent += msg + "\n";
+    box.scrollTop = box.scrollHeight;
+  }
+
+  function streamProgress(runId, isBulk) {
+    _currentRunId = runId;
+    const evt = new EventSource(`/api/stream/${runId}`);
+    evt.onmessage = (e) => {
       const ev = JSON.parse(e.data);
-
       if (ev.type === "log") {
         appendLog(ev.msg);
         return;
       }
-
       if (ev.type === "done") {
-        evtSource.close();
-        _allResults = ev.results || [];
-        renderStats(_allResults);
-        renderTable();
-        $("spinner").style.display   = "none";
-        $("progressTitle").textContent = `Done — ${_allResults.length} results`;
-        $("resultsCard").style.display = "block";
-        $("searchBtn").disabled        = false;
-        $("resultsCard").scrollIntoView({ behavior: "smooth", block: "start" });
-        // Refresh companies and history to reflect new search
-        loadCompanies();
-        loadHistory($("historyDomainFilter").value);
-        loadDomains();
+        evt.close();
+        $("spinner").style.display = "none";
+        $("searchBtn").disabled = false;
+        $("bulkSearchBtn").disabled = false;
+        if (isBulk) {
+          $("progressTitle").textContent = `Bulk done — ${(ev.results || []).length} keywords`;
+          appendLog("\n=== Bulk complete ===");
+          (ev.results || []).forEach(r => {
+            appendLog(r.error ? `[FAIL] ${r.keyword}: ${r.error}`
+                              : `[OK] ${r.keyword} → ${r.count} results (id=${r.search_id})`);
+          });
+          loadCompanies();
+        } else {
+          _allResults = ev.results || [];
+          renderResults();
+          $("progressTitle").textContent = `Done — ${_allResults.length} results`;
+          $("resultsCard").style.display = "block";
+          $("resultsCard").scrollIntoView({ behavior: "smooth", block: "start" });
+        }
         return;
       }
-
       if (ev.type === "error") {
-        evtSource.close();
+        evt.close();
         showError(ev.msg);
         $("spinner").style.display = "none";
-        $("progressTitle").textContent = "Failed";
         $("searchBtn").disabled = false;
+        $("bulkSearchBtn").disabled = false;
+        $("progressTitle").textContent = "Failed";
       }
     };
-
-    evtSource.onerror = () => {
-      evtSource.close();
-      showError("Connection to server lost.");
+    evt.onerror = () => {
+      evt.close();
       $("spinner").style.display = "none";
       $("searchBtn").disabled = false;
+      $("bulkSearchBtn").disabled = false;
     };
   }
 
-  // ── Export ────────────────────────────────────────────────────────────────
-  async function exportExcel() {
-    if (!_allResults.length) return;
-    try {
-      const resp = await fetch("/api/export", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ keyword: _keyword, results: _allResults }),
-      });
-      if (!resp.ok) throw new Error(resp.statusText);
-      const blob = await resp.blob();
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement("a");
-      a.href     = url;
-      a.download = `listicles_${_keyword.replace(/\s+/g, "_")}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      showError("Export failed: " + e.message);
+  // ============================================================
+  // RESULTS RENDERING
+  // ============================================================
+  function pageBadge(type) {
+    const map = {
+      "Listicle (blog post)": ["badge-listicle",  "Listicle"],
+      "Listicle (Top/Best)":  ["badge-listicle",  "Top/Best"],
+      "Blog / Article":       ["badge-blog",       "Blog"],
+      "Possible listicle":    ["badge-possible",   "Possible"],
+      "Aggregator":           ["badge-directory",  "Aggregator"],
+      "Service Page":         ["badge-service",    "Service"],
+      "Video":                ["badge-video",      "Video"],
+      "Competitor (homepage)":["badge-competitor", "Homepage"],
+    };
+    const [cls, label] = map[type] || ["badge-competitor", "Other"];
+    return `<span class="badge ${cls}">${label}</span>`;
+  }
+
+  function positionBadge(pos) {
+    const n = parseInt(pos) || pos;
+    const cls = n <= 3 ? "pos-gold" : n <= 10 ? "pos-silver" : "pos-bronze";
+    return `<span class="pos-badge ${cls}">${n}</span>`;
+  }
+
+  function statusCell(s) {
+    if (s === "Listed") return `<span class="badge badge-valid">✓ Listed</span>`;
+    if (s === "Check Manually") return `<span class="badge badge-possible">Check</span>`;
+    if (!s || s === "Not Listed") return `<span style="color:#aaa">—</span>`;
+    return escapeHtml(s);
+  }
+
+  function renderResults() {
+    let rows = _allResults;
+    if (_resultsFilter === "listicle") rows = rows.filter(r => (r["Page Type"] || "").startsWith("Listicle"));
+    if (_resultsFilter === "listed")   rows = rows.filter(r => r["Status"] === "Listed");
+
+    renderStatsBar(_allResults);
+
+    const tb = $("resultsBody");
+    if (rows.length === 0) {
+      tb.innerHTML = `<tr><td colspan="7" style="padding:30px;text-align:center;color:#8A9BB0">No results match this filter.</td></tr>`;
+      return;
     }
+    tb.innerHTML = rows.map(r => {
+      const url = r["URL"] || "#";
+      const dom = escapeHtml(r["Domain"] || "");
+      const status = r["Status"] || "";
+      const rowCls = status === "Listed" ? "row-validated" : "";
+      return `<tr class="${rowCls}">
+        <td style="text-align:center">${positionBadge(r["Position"])}</td>
+        <td><a class="domain-link" href="${escapeHtml(url)}" target="_blank">${dom}</a></td>
+        <td>${pageBadge(r["Page Type"])}</td>
+        <td>${statusCell(status)}</td>
+        <td>${r["Position on Page"] != null && r["Position on Page"] !== "" && r["Position on Page"] !== "—" ? r["Position on Page"] : '<span style="color:#aaa">—</span>'}</td>
+        <td>${r["Link Type"] && r["Link Type"] !== "—" ? escapeHtml(r["Link Type"]) : '<span style="color:#aaa">—</span>'}</td>
+        <td style="white-space:nowrap">
+          <a class="open-link" href="${escapeHtml(url)}" target="_blank" title="Open">↗</a>
+          <button onclick="openVerifyModal('${url.replace(/'/g, "\\'")}','${dom}')"
+                  style="background:none;border:none;cursor:pointer;color:#2E75B6;font-size:1rem;padding:0 4px;margin-left:4px"
+                  title="Verify">🔍</button>
+        </td>
+      </tr>`;
+    }).join("");
   }
 
-  // ── Enter key ─────────────────────────────────────────────────────────────
-  $("keyword").addEventListener("keydown", e => {
-    if (e.key === "Enter") startSearch();
-  });
-
-  // ── Verify URL (re-fetch and show diagnostic) ─────────────────────────────
-  function closeVerifyModal() {
-    $("verifyModal").style.display = "none";
+  function renderStatsBar(results) {
+    const total = results.length;
+    const listicles = results.filter(r => (r["Page Type"] || "").startsWith("Listicle")).length;
+    const listed = results.filter(r => r["Status"] === "Listed").length;
+    const aggregators = results.filter(r => r["Page Type"] === "Aggregator").length;
+    $("statsBar").innerHTML = [
+      [total, "Total"], [listicles, "Listicles"], [listed, "Listed"], [aggregators, "Aggregators"],
+    ].map(([n, l]) => `<div class="stat"><div class="num">${n}</div><div class="lbl">${l}</div></div>`).join("");
   }
 
-  async function openVerifyModal(url, pageDomain) {
-    // Use the search input domain if available, otherwise the page domain
-    const searchDomain = $("domain").value.trim() || pageDomain;
+  function setFilter(f, btn) {
+    _resultsFilter = f;
+    document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    renderResults();
+  }
 
-    $("verifyModal").style.display = "block";
-    $("verifyContent").innerHTML = `
-      <div style="text-align:center;padding:40px;color:#666">
-        <div class="spinner" style="margin:0 auto 12px"></div>
-        <p>Re-fetching <strong>${url.substring(0, 80)}...</strong></p>
-        <p style="font-size:.85rem;color:#999">Checking for: <strong>${searchDomain || '(no domain)'}</strong></p>
-      </div>
-    `;
-
+  // ============================================================
+  // HISTORY
+  // ============================================================
+  async function loadHistory(domainFilter) {
     try {
-      const resp = await fetch("/api/verify-url", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ url, domain: searchDomain || pageDomain }),
-      });
-      const data = await resp.json();
-      renderVerifyResult(data);
-    } catch (e) {
-      $("verifyContent").innerHTML = `
-        <div style="color:#dc2626;padding:20px;background:#FEE2E2;border-radius:8px">
-          Error: ${e.message}
-        </div>
-      `;
-    }
-  }
-
-  function renderVerifyResult(data) {
-    const detection = data.detection || {};
-    const isListed = detection.found === true;
-    const isBotProtected = detection.link_type === "bot_protected";
-
-    const summaryColor = isListed ? "#16a34a" : isBotProtected ? "#d97706" : "#666";
-    const summaryBg    = isListed ? "#DCFCE7" : isBotProtected ? "#FEF3C7" : "#F3F4F6";
-
-    const variantsHtml = (data.variants_found || []).length === 0
-      ? `<p style="color:#999;font-style:italic">No variants of "${data.domain}" found in the HTML.</p>`
-      : `<ul style="margin:0;padding-left:20px">
-          ${data.variants_found.map(v =>
-            `<li><code style="background:#F3F4F6;padding:2px 6px;border-radius:3px">${v.variant}</code> — found <strong>${v.count}</strong> time(s)</li>`
-          ).join("")}
-        </ul>`;
-
-    const headingsHtml = (data.headings || []).length === 0
-      ? `<p style="color:#999;font-style:italic">No headings found.</p>`
-      : `<ol style="margin:0;padding-left:24px;max-height:240px;overflow-y:auto;font-size:.85rem">
-          ${data.headings.map(h => {
-            const hl = h.contains_domain ? "background:#DCFCE7;font-weight:600" : "";
-            return `<li style="${hl}"><code style="color:#1F4E78;font-size:.75rem">[${h.tag}]</code> ${h.text}</li>`;
-          }).join("")}
-        </ol>`;
-
-    $("verifyContent").innerHTML = `
-      <div style="background:${summaryBg};color:${summaryColor};padding:14px 18px;border-radius:8px;font-weight:600;margin-bottom:18px;font-size:1rem">
-        ${data.summary}
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;font-size:.85rem">
-        <div style="background:#F7FAFD;padding:12px;border-radius:6px">
-          <strong>URL:</strong><br>
-          <span style="word-break:break-all;color:#1F4E78">${data.url}</span>
-        </div>
-        <div style="background:#F7FAFD;padding:12px;border-radius:6px">
-          <strong>HTTP Status:</strong> ${data.http_code}<br>
-          <strong>HTML Size:</strong> ${(data.html_size || 0).toLocaleString()} bytes<br>
-          <strong>Searched for:</strong> "${data.domain}"
-        </div>
-      </div>
-
-      <div style="margin-bottom:18px">
-        <h4 style="margin:0 0 8px;color:#1F4E78;font-size:.95rem">🔎 Variants Found in HTML</h4>
-        <div style="background:#FAFBFC;padding:12px;border-radius:6px;border:1px solid #E0E8F0">
-          ${variantsHtml}
-        </div>
-      </div>
-
-      ${detection.found ? `
-        <div style="margin-bottom:18px;background:#DCFCE7;padding:14px;border-radius:8px;border-left:4px solid #16a34a">
-          <strong style="color:#15803D">✓ Detection Result:</strong><br>
-          Position: <strong>${detection.position}</strong><br>
-          Link Type: <strong>${detection.link_type}</strong>
-        </div>
-      ` : ''}
-
-      <div>
-        <h4 style="margin:0 0 8px;color:#1F4E78;font-size:.95rem">📋 Page Headings (first 20)</h4>
-        <p style="font-size:.78rem;color:#666;margin:0 0 8px">Green-highlighted rows contain your domain.</p>
-        <div style="background:#FAFBFC;padding:12px;border-radius:6px;border:1px solid #E0E8F0">
-          ${headingsHtml}
-        </div>
-      </div>
-    `;
-  }
-
-  // ── History Panel ──────────────────────────────────────────────────────────
-  let _historyData = [];
-  let _selectedKeywords = new Set();
-
-  async function loadHistory(domainFilter = "") {
-    try {
-      // Use explicit URL param — "__none__" for keyword-only, encoded string for specific domain
       let url = "/api/history";
-      if (domainFilter === "__none__") {
-        url += "?domain=__none__";
-      } else if (domainFilter) {
-        url += "?domain=" + encodeURIComponent(domainFilter);
-      }
+      const filterVal = domainFilter !== undefined ? domainFilter : $("historyDomainFilter").value;
+      if (filterVal === "__none__") url += "?domain=__none__";
+      else if (filterVal) url += "?domain=" + encodeURIComponent(filterVal);
       const resp = await fetch(url);
       const data = await resp.json();
       _historyData = data.history || [];
-      _selectedKeywords.clear();
-      renderHistory();
-    } catch (e) {
-      console.error("Error loading history:", e);
-    }
+      _historyFiltered = [..._historyData];
+      _selectedSearches.clear();
+      renderHistoryTable();
+      loadDomainsForFilter();
+    } catch (e) { console.error("History load error:", e); }
   }
 
-  async function loadDomains() {
+  async function loadDomainsForFilter() {
     try {
-      const resp = await fetch("/api/domains");
-      const data = await resp.json();
-      const select = $("historyDomainFilter");
-      const currentValue = select.value;
-
-      // Clear all options, rebuild fresh
-      select.innerHTML = `
+      const data = await (await fetch("/api/domains")).json();
+      const sel = $("historyDomainFilter");
+      const current = sel.value;
+      sel.innerHTML = `
         <option value="">All searches</option>
         <option value="__none__">No domain (keyword only)</option>
       `;
-      // Dedupe + add domain options
       const seen = new Set();
       (data.domains || []).forEach(d => {
         if (!d || seen.has(d)) return;
         seen.add(d);
         const opt = document.createElement("option");
-        opt.value = d;
-        opt.textContent = d;
-        select.appendChild(opt);
+        opt.value = d; opt.textContent = d;
+        sel.appendChild(opt);
       });
-      // Restore previous selection if still valid
-      if (currentValue && (currentValue === "" || currentValue === "__none__" || seen.has(currentValue))) {
-        select.value = currentValue;
-      }
-    } catch (e) {
-      console.error("Error loading domains:", e);
-    }
+      if (current && (current === "" || current === "__none__" || seen.has(current))) sel.value = current;
+    } catch (e) { console.error("Domain load:", e); }
   }
 
-  function renderHistory() {
-    const tbody = $("historyTableBody");
-    tbody.innerHTML = _historyData.map((h, i) => {
+  function filterHistory() {
+    const q = $("historySearch").value.toLowerCase();
+    _historyFiltered = !q ? [..._historyData] :
+      _historyData.filter(h =>
+        (h.keyword || "").toLowerCase().includes(q) ||
+        (h.domain || "").toLowerCase().includes(q) ||
+        (h.location || "").toLowerCase().includes(q)
+      );
+    renderHistoryTable();
+  }
+
+  function renderHistoryTable() {
+    const tb = $("historyTableBody");
+    if (_historyFiltered.length === 0) {
+      tb.innerHTML = `<tr><td colspan="6" style="padding:30px;text-align:center;color:#8A9BB0">No searches found.</td></tr>`;
+      return;
+    }
+    tb.innerHTML = _historyFiltered.map((h) => {
       const date = h.timestamp ? new Date(h.timestamp).toLocaleDateString() : "—";
-      const domain = h.domain || "(no domain)";
-      return `<tr style="border-bottom:1px solid #EDF2F7">
-        <td style="padding:8px"><strong>${h.keyword}</strong> (${h.location?.toUpperCase() || 'US'})</td>
-        <td style="padding:8px">${domain}</td>
-        <td style="padding:8px;font-size:.8rem;color:#8A9BB0">${date}</td>
-        <td style="padding:8px">${h.result_count || 0}</td>
-        <td style="padding:8px;text-align:center">
-          <input type="checkbox" data-idx="${i}" onchange="toggleKeywordSelect(${i})">
-          <button onclick="deleteSearchEntry(${h.search_id})" title="Delete this search"
-                  style="margin-left:8px;background:none;border:none;color:#dc2626;cursor:pointer;font-size:1rem">
-            🗑
-          </button>
+      return `<tr>
+        <td style="text-align:center">
+          <input type="checkbox" data-sid="${h.search_id}" onchange="toggleSearchSelect(${h.search_id}, this)">
+        </td>
+        <td><strong>${escapeHtml(h.keyword)}</strong> <span style="color:#6B7280">(${(h.location || 'us').toUpperCase()})</span></td>
+        <td>${escapeHtml(h.domain || "(no domain)")}</td>
+        <td style="font-size:.85rem;color:#6B7280">${date}</td>
+        <td>${h.result_count || 0}</td>
+        <td style="white-space:nowrap">
+          <button onclick="viewCachedSearch(${h.search_id})" title="View cached results"
+                  style="background:none;border:1px solid #2E75B6;color:#2E75B6;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:.78rem;margin-right:4px">👁 View</button>
+          <button onclick="rerunSearch(${h.search_id})" title="Re-run search"
+                  style="background:none;border:1px solid #217346;color:#217346;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:.78rem;margin-right:4px">🔄 Re-run</button>
+          <button onclick="deleteSearchEntry(${h.search_id})" title="Delete"
+                  style="background:none;border:1px solid #dc2626;color:#dc2626;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:.78rem">🗑</button>
         </td>
       </tr>`;
     }).join("");
-
-    if (_historyData.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="5" style="padding:16px;text-align:center;color:#8A9BB0">No searches yet</td></tr>`;
-    }
   }
 
-  async function deleteSearchEntry(searchId) {
-    if (!confirm("Delete this search?")) return;
+  function toggleSearchSelect(sid, cb) {
+    if (cb.checked) _selectedSearches.add(sid);
+    else _selectedSearches.delete(sid);
+  }
+
+  function toggleAllHistory(cb) {
+    const boxes = document.querySelectorAll('input[data-sid]');
+    boxes.forEach(b => {
+      b.checked = cb.checked;
+      const sid = parseInt(b.dataset.sid);
+      if (cb.checked) _selectedSearches.add(sid);
+      else _selectedSearches.delete(sid);
+    });
+  }
+
+  async function viewCachedSearch(sid) {
     try {
-      await fetch(`/api/history/${searchId}`, { method: "DELETE" });
-      loadHistory($("historyDomainFilter").value);
-      loadDomains();
-    } catch (e) {
-      alert("Delete failed: " + e.message);
-    }
+      const resp = await fetch(`/api/search/${sid}`);
+      const data = await resp.json();
+      _allResults = data.results || [];
+      switchView("search");
+      renderResults();
+      $("resultsTitle").textContent = `Results (cached) — search #${sid}`;
+      $("resultsCard").style.display = "block";
+      $("progressCard").style.display = "none";
+      $("resultsCard").scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (e) { alert("Failed to load: " + e.message); }
+  }
+
+  async function rerunSearch(sid) {
+    if (!confirm("Re-run this search? It will fetch fresh SERP results.")) return;
+    switchView("search");
+    resetSearchUI();
+    $("progressCard").style.display = "block";
+    try {
+      const resp = await fetch(`/api/search/${sid}/rerun`, { method: "POST" });
+      const data = await resp.json();
+      streamProgress(data.run_id, false);
+    } catch (e) { showError(e.message); }
+  }
+
+  async function deleteSearchEntry(sid) {
+    if (!confirm("Delete this search?")) return;
+    await fetch(`/api/history/${sid}`, { method: "DELETE" });
+    loadHistory();
   }
 
   async function clearAllHistory() {
-    if (!confirm("Clear ALL search history? This cannot be undone.")) return;
-    try {
-      await fetch("/api/history", { method: "DELETE" });
-      loadHistory();
-      loadDomains();
-    } catch (e) {
-      alert("Clear failed: " + e.message);
-    }
-  }
-
-  function toggleKeywordSelect(idx) {
-    const cb = document.querySelector(`input[data-idx="${idx}"]`);
-    if (cb.checked) {
-      _selectedKeywords.add(idx);
-    } else {
-      _selectedKeywords.delete(idx);
-    }
+    if (!confirm("Clear ALL search history? Cannot be undone.")) return;
+    await fetch("/api/history", { method: "DELETE" });
+    loadHistory();
   }
 
   async function exportSelected() {
-    if (_selectedKeywords.size === 0) {
-      alert("Please select at least one keyword from the history table");
-      return;
-    }
-    const searchIds = Array.from(_selectedKeywords).map(idx => _historyData[idx].search_id);
-    const domainFilter = $("historyDomainFilter").value || null;
-    exportHistoryData(searchIds, domainFilter);
+    if (_selectedSearches.size === 0) { alert("Select at least one search"); return; }
+    const ids = Array.from(_selectedSearches);
+    const filt = $("historyDomainFilter").value || null;
+    downloadHistoryExport(ids, filt);
   }
 
   async function exportAll() {
-    const domainFilter = $("historyDomainFilter").value || null;
-    exportHistoryData(null, domainFilter);
+    const filt = $("historyDomainFilter").value || null;
+    downloadHistoryExport(null, filt);
   }
 
-  async function exportHistoryData(searchIds, domainFilter) {
+  async function downloadHistoryExport(searchIds, domainFilter) {
     try {
-      const body = {
-        search_ids: searchIds,
-        domain_filter: domainFilter
-      };
       const resp = await fetch("/api/export-history", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(body)
+        body: JSON.stringify({ search_ids: searchIds, domain_filter: domainFilter }),
       });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
         throw new Error(err.detail || resp.statusText);
       }
+      const cd = resp.headers.get("Content-Disposition") || "";
+      const m = cd.match(/filename="([^"]+)"/);
+      const fname = m ? m[1] : "export.xlsx";
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = `listicles_history_export_${new Date().toISOString().split('T')[0]}.xlsx`;
-      a.click();
+      a.href = url; a.download = fname; a.click();
       URL.revokeObjectURL(url);
-    } catch (e) {
-      alert("Export failed: " + e.message);
-    }
+    } catch (e) { alert("Export failed: " + e.message); }
   }
 
-  // Select All checkbox
-  $("selectAllHistory").addEventListener("change", e => {
-    const checkboxes = document.querySelectorAll('input[data-idx]');
-    checkboxes.forEach((cb, i) => {
-      cb.checked = e.target.checked;
-      if (e.target.checked) _selectedKeywords.add(parseInt(cb.dataset.idx));
-      else _selectedKeywords.delete(parseInt(cb.dataset.idx));
-    });
-  });
-
-  $("historyDomainFilter").addEventListener("change", e => {
-    loadHistory(e.target.value);
-  });
-
-  // Load history on page load
-  loadHistory();
-  loadDomains();
-  loadCompanies();
-
-  // ── Companies management ──────────────────────────────────────────────────
-  let _companies = [];
-  let _editingCompanyId = null;
-
+  // ============================================================
+  // COMPANIES
+  // ============================================================
   async function loadCompanies() {
     try {
-      const resp = await fetch("/api/companies");
-      const data = await resp.json();
+      const data = await (await fetch("/api/companies")).json();
       _companies = data.companies || [];
-      renderCompanies();
-      updateCompanyDropdown();
-    } catch (e) {
-      console.error("Error loading companies:", e);
-    }
+      renderSettingsCompanies();
+      updateCompanyDropdowns();
+    } catch (e) { console.error("Companies load:", e); }
   }
 
-  function renderCompanies() {
-    const grid = $("companiesGrid");
+  function renderSettingsCompanies() {
+    const g = $("settingsCompaniesGrid");
     if (_companies.length === 0) {
-      grid.innerHTML = `<div style="color:#8A9BB0;padding:16px;text-align:center;font-size:.9rem;grid-column:1/-1">
-        No companies yet. Click "+ Add Company" to create your first profile.
-      </div>`;
+      g.innerHTML = `<p style="color:#6B7280;padding:14px;grid-column:1/-1">No companies yet. Click "+ Add Company" above.</p>`;
       return;
     }
-    grid.innerHTML = _companies.map(c => `
-      <div style="background:#F7FAFD;border:1.5px solid #D8E6F2;border-radius:8px;padding:14px;position:relative">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-          <h4 style="margin:0;color:#1F4E78;font-size:1rem">${c.name}</h4>
+    g.innerHTML = _companies.map(c => `
+      <div class="company-card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <h4>${escapeHtml(c.name)}</h4>
           <div>
-            <button onclick="editCompany(${c.id})" title="Edit"
-                    style="background:none;border:none;cursor:pointer;color:#2E75B6;font-size:.95rem;padding:2px 4px">✎</button>
-            <button onclick="deleteCompanyConfirm(${c.id})" title="Delete"
-                    style="background:none;border:none;cursor:pointer;color:#dc2626;font-size:.95rem;padding:2px 4px">🗑</button>
+            <button onclick="editCompany(${c.id})" title="Edit" style="background:none;border:none;cursor:pointer;color:#2E75B6;font-size:.95rem">✎</button>
+            <button onclick="deleteCompanyConfirm(${c.id})" title="Delete" style="background:none;border:none;cursor:pointer;color:#dc2626;font-size:.95rem">🗑</button>
           </div>
         </div>
-        <div style="font-size:.85rem;color:#5A6A7E;margin-bottom:8px">
-          🌐 ${c.domain}<br>
-          🔍 ${c.search_count} search${c.search_count === 1 ? '' : 'es'} · ${c.name_variants.length} variant${c.name_variants.length === 1 ? '' : 's'}
+        <div class="domain-text">🌐 ${escapeHtml(c.domain)}</div>
+        <div style="font-size:.78rem;color:#6B7280;margin:6px 0">
+          🔍 ${c.search_count} searches · ${c.name_variants.length} variants
         </div>
-        <div style="display:flex;gap:6px;margin-top:8px">
-          <button onclick="selectCompanyForSearch(${c.id})" style="flex:1;padding:6px;background:#1F4E78;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:.8rem;font-weight:600">
-            + New Search
-          </button>
-          <button onclick="openCompanyHistory(${c.id})" style="flex:1;padding:6px;background:#217346;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:.8rem;font-weight:600">
-            ⬇ Export
-          </button>
+        <div class="actions">
+          <button onclick="selectCompanyForSearch(${c.id})" style="background:#1F4E78;color:#fff">+ Search</button>
+          <button onclick="openCompanyExport(${c.id})" style="background:#217346;color:#fff">⬇ Export</button>
         </div>
       </div>
     `).join("");
   }
 
-  function updateCompanyDropdown() {
-    const sel = $("companySelect");
-    const current = sel.value;
-    sel.innerHTML = '<option value="">— None (no domain tracking) —</option>';
-    _companies.forEach(c => {
-      const opt = document.createElement("option");
-      opt.value = c.id;
-      opt.dataset.domain = c.domain;
-      opt.textContent = `${c.name} (${c.domain})`;
-      sel.appendChild(opt);
+  function updateCompanyDropdowns() {
+    ["companySelect", "bulkCompanySelect"].forEach(id => {
+      const sel = $(id);
+      if (!sel) return;
+      const current = sel.value;
+      sel.innerHTML = '<option value="">— None —</option>';
+      _companies.forEach(c => {
+        const opt = document.createElement("option");
+        opt.value = c.id; opt.dataset.domain = c.domain;
+        opt.textContent = `${c.name} (${c.domain})`;
+        sel.appendChild(opt);
+      });
+      if (current) sel.value = current;
     });
-    if (current) sel.value = current;
   }
 
   function onCompanyChange() {
@@ -1220,185 +1341,386 @@
     $("companyName").value = c.name;
     $("companyDomain").value = c.domain;
     $("companyDomain").disabled = true;
-    // Show only the custom variants (skip auto-generated)
     $("companyVariants").value = c.name_variants.join("\n");
     $("companyModal").style.display = "block";
-  }
-
-  function closeCompanyModal() {
-    $("companyModal").style.display = "none";
   }
 
   async function saveCompany() {
     const name = $("companyName").value.trim();
     const domain = $("companyDomain").value.trim();
-    const variants = $("companyVariants").value.split("\n")
-                         .map(v => v.trim()).filter(v => v);
-
-    if (!name || !domain) {
-      alert("Name and domain are required");
-      return;
-    }
-
+    const variants = $("companyVariants").value.split("\n").map(v => v.trim()).filter(v => v);
+    if (!name || !domain) { alert("Name and domain are required"); return; }
     try {
       if (_editingCompanyId) {
         await fetch(`/api/companies/${_editingCompanyId}`, {
-          method: "PUT",
-          headers: {"Content-Type": "application/json"},
+          method: "PUT", headers: {"Content-Type": "application/json"},
           body: JSON.stringify({ name, custom_variants: variants }),
         });
       } else {
         await fetch("/api/companies", {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
+          method: "POST", headers: {"Content-Type": "application/json"},
           body: JSON.stringify({ name, domain, custom_variants: variants }),
         });
       }
-      closeCompanyModal();
+      closeModal("companyModal");
       loadCompanies();
-    } catch (e) {
-      alert("Save failed: " + e.message);
-    }
+    } catch (e) { alert("Save failed: " + e.message); }
   }
 
   async function deleteCompanyConfirm(id) {
     const c = _companies.find(x => x.id === id);
     if (!c) return;
-    if (!confirm(`Delete company "${c.name}"? Searches will remain but become unlinked.`)) return;
+    if (!confirm(`Delete "${c.name}"? Searches remain but become unlinked.`)) return;
     await fetch(`/api/companies/${id}`, { method: "DELETE" });
     loadCompanies();
   }
 
   function selectCompanyForSearch(id) {
-    $("companySelect").value = id;
-    onCompanyChange();
-    $("keyword").focus();
-    $("keyword").scrollIntoView({ behavior: "smooth", block: "center" });
+    switchView("search");
+    setTimeout(() => {
+      $("companySelect").value = id;
+      onCompanyChange();
+      $("keyword").focus();
+    }, 80);
   }
 
-  // Company history + export dialog
-  let _companyHistoryData = [];
-  let _companySelectedSearches = new Set();
-  let _exportingCompanyId = null;
-
-  async function openCompanyHistory(companyId) {
+  async function openCompanyExport(companyId) {
     _exportingCompanyId = companyId;
-    _companySelectedSearches.clear();
-    const company = _companies.find(c => c.id === companyId);
+    const c = _companies.find(x => x.id === companyId);
     const resp = await fetch(`/api/companies/${companyId}/history`);
     const data = await resp.json();
-    _companyHistoryData = data.history || [];
+    const searches = data.history || [];
 
-    // Build modal content
-    const list = _companyHistoryData.length === 0
-      ? `<p style="color:#8A9BB0;text-align:center;padding:24px">No searches yet for this company.</p>`
-      : `<table style="width:100%;font-size:.85rem;border-collapse:collapse">
+    let bodyHtml = "";
+    if (searches.length === 0) {
+      bodyHtml = `<p style="color:#6B7280;text-align:center;padding:24px">No searches yet for this company.</p>`;
+    } else {
+      bodyHtml = `<p style="font-size:.85rem;color:#5A6A7E;margin-bottom:12px">
+        Select specific searches to export, or leave all unchecked to export everything for <strong>${escapeHtml(c.name)}</strong>.
+      </p>
+      <div style="border:1px solid #E0E8F0;border-radius:8px;max-height:340px;overflow-y:auto">
+        <table style="width:100%;font-size:.85rem">
           <thead style="background:#F3F4F6;position:sticky;top:0">
             <tr>
-              <th style="padding:8px;text-align:left">Keyword & Location</th>
+              <th style="padding:8px;text-align:left">Keyword</th>
               <th style="padding:8px;text-align:left">Date</th>
               <th style="padding:8px;text-align:left">Results</th>
-              <th style="padding:8px;text-align:center">
-                <input type="checkbox" id="selectAllCompanySearches"
-                       onchange="toggleAllCompanySearches(this)">
-              </th>
+              <th style="padding:8px;text-align:center"><input type="checkbox" id="selAllCmpSearches" onchange="toggleAllCmpSearches(this)"></th>
             </tr>
           </thead>
           <tbody>
-            ${_companyHistoryData.map((h, i) => `
-              <tr style="border-bottom:1px solid #EDF2F7">
-                <td style="padding:8px"><strong>${h.keyword}</strong> (${h.location?.toUpperCase()})</td>
-                <td style="padding:8px;font-size:.78rem;color:#8A9BB0">${h.timestamp ? new Date(h.timestamp).toLocaleDateString() : '—'}</td>
-                <td style="padding:8px">${h.result_count}</td>
-                <td style="padding:8px;text-align:center">
-                  <input type="checkbox" data-search-id="${h.search_id}" onchange="toggleCompanySearch(${h.search_id})">
-                </td>
-              </tr>
-            `).join("")}
+          ${searches.map(s => `<tr style="border-bottom:1px solid #EDF2F7">
+            <td style="padding:8px"><strong>${escapeHtml(s.keyword)}</strong> (${(s.location || 'us').toUpperCase()})</td>
+            <td style="padding:8px;font-size:.78rem;color:#6B7280">${s.timestamp ? new Date(s.timestamp).toLocaleDateString() : '—'}</td>
+            <td style="padding:8px">${s.result_count}</td>
+            <td style="padding:8px;text-align:center"><input type="checkbox" data-cmp-sid="${s.search_id}"></td>
+          </tr>`).join("")}
           </tbody>
-        </table>`;
-
-    document.getElementById("verifyContent").innerHTML = `
-      <div style="margin-bottom:16px">
-        <h4 style="margin:0 0 6px;color:#1F4E78">${company?.name || 'Company'} — Export Report</h4>
-        <p style="margin:0;font-size:.85rem;color:#5A6A7E">
-          Select specific searches to export, or leave all unchecked to export everything.
-        </p>
+        </table>
       </div>
-      <div style="border:1px solid #E0E8F0;border-radius:8px;max-height:340px;overflow-y:auto">
-        ${list}
-      </div>
-      <div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end">
-        <button onclick="exportCompanyAll()" style="padding:9px 18px;background:#217346;color:#fff;border:none;border-radius:7px;cursor:pointer;font-weight:600">
-          ⬇ Export ALL (${_companyHistoryData.length})
-        </button>
-        <button onclick="exportCompanySelected()" style="padding:9px 18px;background:#1F4E78;color:#fff;border:none;border-radius:7px;cursor:pointer;font-weight:600">
-          ⬇ Export Selected
-        </button>
-      </div>
-    `;
-    // Reuse the verify modal as container
-    document.getElementById("verifyModal").style.display = "block";
-  }
-
-  function toggleCompanySearch(searchId) {
-    if (_companySelectedSearches.has(searchId)) {
-      _companySelectedSearches.delete(searchId);
-    } else {
-      _companySelectedSearches.add(searchId);
+      <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-green" onclick="exportCompanyAll()">⬇ Export ALL (${searches.length})</button>
+        <button class="btn btn-primary" onclick="exportCompanySelected()">⬇ Export Selected</button>
+      </div>`;
     }
+    $("exportModalTitle").textContent = `${c.name} — Export Report`;
+    $("exportModalBody").innerHTML = bodyHtml;
+    $("exportModal").style.display = "block";
   }
 
-  function toggleAllCompanySearches(cb) {
-    const checkboxes = document.querySelectorAll('input[data-search-id]');
-    checkboxes.forEach(c => {
-      c.checked = cb.checked;
-      const sid = parseInt(c.dataset.searchId);
-      if (cb.checked) _companySelectedSearches.add(sid);
-      else _companySelectedSearches.delete(sid);
-    });
+  function toggleAllCmpSearches(cb) {
+    document.querySelectorAll('input[data-cmp-sid]').forEach(c => c.checked = cb.checked);
   }
 
-  async function exportCompanyAll() {
-    await downloadCompanyExport(null);
-  }
+  async function exportCompanyAll() { await downloadCompanyExport(null); }
 
   async function exportCompanySelected() {
-    if (_companySelectedSearches.size === 0) {
-      alert("Select at least one search, or use 'Export ALL'.");
-      return;
-    }
-    await downloadCompanyExport(Array.from(_companySelectedSearches));
+    const ids = Array.from(document.querySelectorAll('input[data-cmp-sid]:checked'))
+                     .map(c => parseInt(c.dataset.cmpSid));
+    if (ids.length === 0) { alert("Select at least one search, or use Export ALL"); return; }
+    await downloadCompanyExport(ids);
   }
 
   async function downloadCompanyExport(searchIds) {
     try {
       const resp = await fetch(`/api/companies/${_exportingCompanyId}/export`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
+        method: "POST", headers: {"Content-Type": "application/json"},
         body: JSON.stringify({ search_ids: searchIds }),
       });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
         throw new Error(err.detail || resp.statusText);
       }
-      // Extract filename from Content-Disposition
       const cd = resp.headers.get("Content-Disposition") || "";
       const m = cd.match(/filename="([^"]+)"/);
-      const fname = m ? m[1] : "company_export.xlsx";
-
+      const fname = m ? m[1] : "export.xlsx";
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = fname;
-      a.click();
+      a.href = url; a.download = fname; a.click();
       URL.revokeObjectURL(url);
-      closeVerifyModal();
+      closeModal("exportModal");
+    } catch (e) { alert("Export failed: " + e.message); }
+  }
+
+  // ============================================================
+  // API KEYS
+  // ============================================================
+  async function loadApiKeys() {
+    try {
+      const data = await (await fetch("/api/api-keys")).json();
+      renderApiKeys(data.keys || []);
+    } catch (e) { console.error("API keys load:", e); }
+  }
+
+  function renderApiKeys(keys) {
+    const PROVIDERS = {
+      "serper": "Serper.dev",
+      "google_cse": "Google Custom Search",
+      "openpagerank": "Open PageRank",
+      "semrush": "Semrush",
+    };
+    const list = $("apiKeysList");
+    if (keys.length === 0) {
+      list.innerHTML = `<p style="color:#6B7280;padding:14px">No API keys configured. Click "+ Add / Update Key" below.</p>`;
+      return;
+    }
+    list.innerHTML = keys.map(k => {
+      const usage = k.usage || {};
+      const statusHtml = k.last_status === "ok" ? `<span class="key-status-ok">✓ Verified</span>` :
+                         k.last_status === "error" ? `<span class="key-status-err">✗ Failed</span>` :
+                         `<span class="key-status-pending">Not tested</span>`;
+      const credits = (usage.latest_credits != null) ? `${usage.latest_credits} left` : "—";
+      return `<div class="list-row">
+        <div class="info" style="flex:1">
+          <div>
+            <strong>${PROVIDERS[k.provider] || k.provider}</strong><br>
+            <code style="font-size:.78rem;color:#6B7280">${escapeHtml(k.key_masked || "")}</code>
+          </div>
+        </div>
+        <div style="display:flex;gap:18px;align-items:center;font-size:.85rem">
+          <div style="text-align:center"><div style="color:#6B7280;font-size:.7rem;text-transform:uppercase">Status</div>${statusHtml}</div>
+          <div style="text-align:center"><div style="color:#6B7280;font-size:.7rem;text-transform:uppercase">Today</div>${usage.today_calls || 0}</div>
+          <div style="text-align:center"><div style="color:#6B7280;font-size:.7rem;text-transform:uppercase">Total</div>${usage.total_calls || 0}</div>
+          <div style="text-align:center"><div style="color:#6B7280;font-size:.7rem;text-transform:uppercase">Credits</div>${credits}</div>
+        </div>
+        <div class="actions" style="margin-left:14px">
+          <button class="btn btn-ghost btn-sm" onclick="testApiKey('${k.provider}')">Test</button>
+          <button class="btn btn-red btn-sm" onclick="deleteApiKey('${k.provider}')">🗑</button>
+        </div>
+      </div>`;
+    }).join("");
+  }
+
+  function openApiKeyModal() {
+    $("apiProvider").value = "serper";
+    $("apiKey").value = "";
+    $("apiCx").value = "";
+    $("apiKeyTestResult").innerHTML = "";
+    onApiProviderChange();
+    $("apiKeyModal").style.display = "block";
+  }
+
+  function onApiProviderChange() {
+    const p = $("apiProvider").value;
+    $("apiCxField").style.display = p === "google_cse" ? "block" : "none";
+  }
+
+  async function saveApiKey() {
+    const provider = $("apiProvider").value;
+    const api_key = $("apiKey").value.trim();
+    if (!api_key) { alert("API key required"); return; }
+    const extra_data = provider === "google_cse"
+      ? { cx: $("apiCx").value.trim() } : {};
+    try {
+      await fetch("/api/api-keys", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ provider, api_key, extra_data }),
+      });
+      // Auto-test
+      const test = await fetch(`/api/api-keys/${provider}/test`, { method: "POST" });
+      const tdata = await test.json();
+      $("apiKeyTestResult").innerHTML = tdata.ok
+        ? `<div class="success-box">✓ ${escapeHtml(tdata.message)}</div>`
+        : `<div class="error-box" style="display:block">✗ ${escapeHtml(tdata.message)}</div>`;
+      loadApiKeys();
+      if (tdata.ok) setTimeout(() => closeModal("apiKeyModal"), 1500);
+    } catch (e) { alert("Save failed: " + e.message); }
+  }
+
+  async function testApiKey(provider) {
+    try {
+      const resp = await fetch(`/api/api-keys/${provider}/test`, { method: "POST" });
+      const data = await resp.json();
+      alert(data.ok ? `✓ ${data.message}` + (data.credits ? ` (${data.credits} credits left)` : "")
+                    : `✗ ${data.message}`);
+      loadApiKeys();
+    } catch (e) { alert("Test failed: " + e.message); }
+  }
+
+  async function deleteApiKey(provider) {
+    if (!confirm(`Delete ${provider} API key?`)) return;
+    await fetch(`/api/api-keys/${provider}`, { method: "DELETE" });
+    loadApiKeys();
+  }
+
+  // ============================================================
+  // AGGREGATORS
+  // ============================================================
+  async function loadAggregators() {
+    try {
+      const data = await (await fetch("/api/aggregators")).json();
+      const list = $("aggregatorsList");
+      const aggs = data.aggregators || [];
+      if (aggs.length === 0) {
+        list.innerHTML = `<p style="color:#6B7280;padding:14px">No aggregators yet.</p>`;
+        return;
+      }
+      list.innerHTML = aggs.map(a => `<div class="list-row">
+        <div class="info"><span>🌐</span><strong>${escapeHtml(a.domain)}</strong></div>
+        <div class="actions">
+          <button class="btn btn-red btn-sm" onclick="deleteAggregator(${a.id})">🗑</button>
+        </div>
+      </div>`).join("");
+    } catch (e) { console.error("Aggregators load:", e); }
+  }
+
+  async function addAggregator() {
+    const d = $("newAggregator").value.trim();
+    if (!d) return;
+    try {
+      await fetch("/api/aggregators", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ domain: d }),
+      });
+      $("newAggregator").value = "";
+      loadAggregators();
+    } catch (e) { alert("Add failed: " + e.message); }
+  }
+
+  async function deleteAggregator(id) {
+    if (!confirm("Delete this aggregator?")) return;
+    await fetch(`/api/aggregators/${id}`, { method: "DELETE" });
+    loadAggregators();
+  }
+
+  // ============================================================
+  // VIDEO DOMAINS
+  // ============================================================
+  async function loadVideoDomains() {
+    try {
+      const data = await (await fetch("/api/video-domains")).json();
+      const list = $("videoDomainsList");
+      const vids = data.videos || [];
+      if (vids.length === 0) {
+        list.innerHTML = `<p style="color:#6B7280;padding:14px">No video domains yet.</p>`;
+        return;
+      }
+      list.innerHTML = vids.map(v => `<div class="list-row">
+        <div class="info"><span>🎥</span><strong>${escapeHtml(v.domain)}</strong></div>
+        <div class="actions">
+          <button class="btn btn-red btn-sm" onclick="deleteVideoDomain(${v.id})">🗑</button>
+        </div>
+      </div>`).join("");
+    } catch (e) { console.error("Video domains load:", e); }
+  }
+
+  async function addVideoDomain() {
+    const d = $("newVideoDomain").value.trim();
+    if (!d) return;
+    try {
+      await fetch("/api/video-domains", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ domain: d }),
+      });
+      $("newVideoDomain").value = "";
+      loadVideoDomains();
+    } catch (e) { alert("Add failed: " + e.message); }
+  }
+
+  async function deleteVideoDomain(id) {
+    if (!confirm("Delete this video domain?")) return;
+    await fetch(`/api/video-domains/${id}`, { method: "DELETE" });
+    loadVideoDomains();
+  }
+
+  // ============================================================
+  // VERIFY URL MODAL
+  // ============================================================
+  async function openVerifyModal(url, pageDomain) {
+    const searchDomain = $("domain").value.trim() || pageDomain;
+    $("verifyModal").style.display = "block";
+    $("verifyContent").innerHTML = `<div style="text-align:center;padding:40px;color:#666">
+      <div class="spinner" style="margin:0 auto 12px"></div>
+      <p>Re-fetching <strong>${escapeHtml(url.substring(0, 80))}...</strong></p>
+    </div>`;
+    try {
+      const resp = await fetch("/api/verify-url", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ url, domain: searchDomain || pageDomain }),
+      });
+      const data = await resp.json();
+      renderVerifyResult(data);
     } catch (e) {
-      alert("Export failed: " + e.message);
+      $("verifyContent").innerHTML = `<div class="error-box" style="display:block">Error: ${escapeHtml(e.message)}</div>`;
     }
   }
+
+  function renderVerifyResult(data) {
+    const det = data.detection || {};
+    const isListed = det.found === true;
+    const isBot = det.link_type === "bot_protected";
+    const color = isListed ? "#16a34a" : isBot ? "#d97706" : "#666";
+    const bg    = isListed ? "#DCFCE7" : isBot ? "#FEF3C7" : "#F3F4F6";
+
+    const variantsHtml = (data.variants_found || []).length === 0
+      ? `<p style="color:#999;font-style:italic">No variants found in HTML.</p>`
+      : `<ul style="margin:0;padding-left:20px">${data.variants_found.map(v =>
+          `<li><code style="background:#F3F4F6;padding:2px 6px;border-radius:3px">${escapeHtml(v.variant)}</code> — <strong>${v.count}</strong> time(s)</li>`
+        ).join("")}</ul>`;
+
+    const headingsHtml = (data.headings || []).length === 0
+      ? `<p style="color:#999;font-style:italic">No headings found.</p>`
+      : `<ol style="margin:0;padding-left:24px;max-height:240px;overflow-y:auto;font-size:.85rem">
+          ${data.headings.map(h => {
+            const hl = h.contains_domain ? "background:#DCFCE7;font-weight:600" : "";
+            return `<li style="${hl}"><code style="color:#1F4E78;font-size:.75rem">[${h.tag}]</code> ${escapeHtml(h.text)}</li>`;
+          }).join("")}
+        </ol>`;
+
+    $("verifyContent").innerHTML = `
+      <div style="background:${bg};color:${color};padding:14px 18px;border-radius:8px;font-weight:600;margin-bottom:18px">
+        ${escapeHtml(data.summary)}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;font-size:.85rem">
+        <div style="background:#F7FAFD;padding:12px;border-radius:6px">
+          <strong>URL:</strong><br><span style="word-break:break-all;color:#1F4E78">${escapeHtml(data.url)}</span>
+        </div>
+        <div style="background:#F7FAFD;padding:12px;border-radius:6px">
+          <strong>HTTP:</strong> ${data.http_code}<br>
+          <strong>HTML Size:</strong> ${(data.html_size || 0).toLocaleString()} bytes<br>
+          <strong>Searched for:</strong> "${escapeHtml(data.domain)}"
+        </div>
+      </div>
+      <div style="margin-bottom:18px">
+        <h4 style="margin:0 0 8px;color:#1F4E78">🔎 Variants Found in HTML</h4>
+        <div style="background:#FAFBFC;padding:12px;border-radius:6px;border:1px solid #E0E8F0">${variantsHtml}</div>
+      </div>
+      <div>
+        <h4 style="margin:0 0 8px;color:#1F4E78">📋 Page Headings (first 20)</h4>
+        <p style="font-size:.78rem;color:#666;margin:0 0 8px">Green-highlighted rows contain your domain.</p>
+        <div style="background:#FAFBFC;padding:12px;border-radius:6px;border:1px solid #E0E8F0">${headingsHtml}</div>
+      </div>`;
+  }
+
+  // ============================================================
+  // INIT
+  // ============================================================
+  $("keyword").addEventListener("keydown", e => { if (e.key === "Enter") startSearch(); });
+
+  // First load
+  loadCompanies();
+  loadDashboard();
 </script>
 </body>
 </html>
