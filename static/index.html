@@ -299,13 +299,17 @@
       SEO Listicles
     </div>
     <nav>
-      <a data-view="dashboard"   class="active" onclick="switchView('dashboard')"><span class="icon">🏠</span>Dashboard</a>
-      <a data-view="search"      onclick="switchView('search')"><span class="icon">🔍</span>Search</a>
-      <a data-view="history"     onclick="switchView('history')"><span class="icon">📜</span>History</a>
-      <a data-view="competitors" onclick="switchView('competitors')"><span class="icon">👥</span>Competitors</a>
-      <a data-view="settings"    onclick="switchView('settings')"><span class="icon">⚙</span>Settings</a>
+      <a data-view="dashboard"    class="active" onclick="switchView('dashboard')"><span class="icon">🏠</span>Dashboard</a>
+      <a data-view="search"       onclick="switchView('search')"><span class="icon">🔍</span>Search</a>
+      <a data-view="history"      onclick="switchView('history')"><span class="icon">📜</span>History</a>
+      <a data-view="verify"       onclick="switchView('verify')"><span class="icon">🔬</span>Cross-Verify</a>
+      <a data-view="competitors"  onclick="switchView('competitors')"><span class="icon">👥</span>Competitors</a>
+      <a data-view="settings"     onclick="switchView('settings')"><span class="icon">⚙</span>Settings</a>
     </nav>
-    <div class="footer">v1.5 · Local tool</div>
+    <div class="footer">
+      <div id="semrushSpendBadge" style="font-size:.7rem;color:#9CA3AF;margin-bottom:6px">Semrush: loading…</div>
+      v1.7 · Local tool
+    </div>
   </aside>
 
   <!-- ── Content ── -->
@@ -379,19 +383,50 @@
               </select>
             </div>
             <div class="field">
-              <label for="targetListicles">Target listicles</label>
+              <label for="targetListicles">Target listicles (depth)</label>
               <select id="targetListicles">
-                <option value="5">5 listicles</option>
-                <option value="10" selected>10 listicles</option>
-                <option value="15">15 listicles</option>
-                <option value="20">20 listicles</option>
-                <option value="30">30 listicles</option>
+                <option value="10">10 — quick</option>
+                <option value="20" selected>20 — balanced (recommended)</option>
+                <option value="30">30 — deep (catches more)</option>
               </select>
             </div>
           </div>
-          <button class="btn btn-primary" id="searchBtn" onclick="startSearch()" style="margin-top:16px">
-            🔍 Find Listicles
-          </button>
+          <div style="margin-top:14px;padding:12px 14px;background:#F7FAFD;border:1px solid #D8E6F2;border-radius:7px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;font-size:.88rem;color:#1F4E78">
+              <input type="checkbox" id="enableMultiRegion" onchange="toggleMultiRegion()">
+              🌍 Multi-region bundle — search across multiple locations at once
+            </label>
+            <div id="multiRegionPanel" style="display:none;margin-top:10px">
+              <label style="display:block;font-size:.78rem;color:#5A6A7E;margin-bottom:6px">Regions (one Serper credit per region per page):</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap" id="regionChips">
+                <label style="display:flex;align-items:center;gap:5px;padding:6px 12px;border:1.5px solid #D0D9E3;border-radius:20px;cursor:pointer;background:#fff;font-size:.82rem">
+                  <input type="checkbox" data-region="us" checked> US
+                </label>
+                <label style="display:flex;align-items:center;gap:5px;padding:6px 12px;border:1.5px solid #D0D9E3;border-radius:20px;cursor:pointer;background:#fff;font-size:.82rem">
+                  <input type="checkbox" data-region="uk"> UK
+                </label>
+                <label style="display:flex;align-items:center;gap:5px;padding:6px 12px;border:1.5px solid #D0D9E3;border-radius:20px;cursor:pointer;background:#fff;font-size:.82rem">
+                  <input type="checkbox" data-region="in"> India
+                </label>
+                <label style="display:flex;align-items:center;gap:5px;padding:6px 12px;border:1.5px solid #D0D9E3;border-radius:20px;cursor:pointer;background:#fff;font-size:.82rem">
+                  <input type="checkbox" data-region="ca"> Canada
+                </label>
+                <label style="display:flex;align-items:center;gap:5px;padding:6px 12px;border:1.5px solid #D0D9E3;border-radius:20px;cursor:pointer;background:#fff;font-size:.82rem">
+                  <input type="checkbox" data-region="au"> Australia
+                </label>
+              </div>
+              <div id="multiRegionEstimate" style="margin-top:8px;font-size:.78rem;color:#6B7280"></div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+            <button class="btn btn-primary" id="searchBtn" onclick="startSearch()">
+              🔍 Find Listicles
+            </button>
+            <button id="findEverythingBtn" onclick="openFindEverything()"
+                    style="background:linear-gradient(135deg,#9333EA,#7C3AED);color:#fff;padding:9px 20px;border:none;border-radius:7px;cursor:pointer;font-size:.9rem;font-weight:600">
+              🎯 Find Everything (US + IN + UK)
+            </button>
+          </div>
         </div>
 
         <div id="bulkSearchForm" style="display:none">
@@ -423,11 +458,9 @@
             <div class="field">
               <label for="bulkTargetListicles">Per keyword</label>
               <select id="bulkTargetListicles">
-                <option value="5">5 listicles</option>
-                <option value="10" selected>10 listicles</option>
-                <option value="15">15 listicles</option>
-                <option value="20">20 listicles</option>
-                <option value="30">30 listicles</option>
+                <option value="10">10 — quick</option>
+                <option value="20" selected>20 — balanced</option>
+                <option value="30">30 — deep</option>
               </select>
             </div>
           </div>
@@ -447,9 +480,9 @@
       </div>
 
       <div class="card" id="resultsCard" style="display:none">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
           <div class="card-title" id="resultsTitle" style="margin:0">Results</div>
-          <div id="resultsVerifyActions" style="display:flex;gap:6px"></div>
+          <div id="resultsVerifyActions" style="display:flex;gap:6px;flex-wrap:wrap"></div>
         </div>
         <div class="stats-bar" id="statsBar"></div>
         <div class="filter-bar">
@@ -511,6 +544,44 @@
         <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
           <button class="btn btn-green" onclick="exportSelected()">⬇ Export Selected</button>
           <button class="btn btn-green" onclick="exportAll()">⬇ Export All</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ━━━━━━━━━━ CROSS-VERIFY VIEW ━━━━━━━━━━ -->
+    <div id="view-verify" class="view">
+      <div class="view-header">
+        <div>
+          <h1>Cross-Verify SERP</h1>
+          <p>Compare Serper.dev (your search) vs Semrush to find sites either provider missed. 12-hour cache reduces API cost.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="history-toolbar">
+          <input type="text" id="verifySearch" placeholder="🔍 Filter searches..."
+                 oninput="filterVerifyList()" style="flex:1;min-width:200px">
+          <select id="verifyFilterStatus" onchange="filterVerifyList()">
+            <option value="">All searches</option>
+            <option value="never">Never verified</option>
+            <option value="partial">Partially verified</option>
+            <option value="full">Fully verified</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Keyword & Location</th>
+                <th>Company</th>
+                <th>Searched</th>
+                <th>Serper Cache</th>
+                <th>Semrush Cache</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="verifyTableBody"></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -747,6 +818,50 @@
   </div>
 </div>
 
+<!-- Find Everything Modal -->
+<div id="findEverythingModal" class="modal">
+  <div class="modal-content" style="max-width:640px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="margin:0">🎯 Find Everything — Wide SERP Coverage</h3>
+      <button onclick="closeModal('findEverythingModal')" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#666">×</button>
+    </div>
+    <div id="findEverythingContent"></div>
+  </div>
+</div>
+
+<!-- Mine Competitor Keywords Modal -->
+<div id="mineModal" class="modal">
+  <div class="modal-content" style="max-width:820px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="margin:0">💎 Mine Competitor Keywords</h3>
+      <button onclick="closeModal('mineModal')" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#666">×</button>
+    </div>
+    <div id="mineContent"></div>
+  </div>
+</div>
+
+<!-- Listicle Score Modal -->
+<div id="scoreModal" class="modal">
+  <div class="modal-content" style="max-width:720px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="margin:0">⭐ Listicle Priority Score</h3>
+      <button onclick="closeModal('scoreModal')" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#666">×</button>
+    </div>
+    <div id="scoreContent"></div>
+  </div>
+</div>
+
+<!-- Cross-Verify Modal -->
+<div id="crossVerifyModal" class="modal">
+  <div class="modal-content" style="max-width:920px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <h3 style="margin:0">🔬 Cross-Verify SERP</h3>
+      <button onclick="closeModal('crossVerifyModal')" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:#666">×</button>
+    </div>
+    <div id="crossVerifyContent"></div>
+  </div>
+</div>
+
 <!-- SERP Compare Modal -->
 <div id="compareModal" class="modal">
   <div class="modal-content" style="max-width:900px">
@@ -875,6 +990,7 @@
     // Auto-refresh data per view
     if (view === "dashboard") loadDashboard();
     if (view === "history") loadHistory();
+    if (view === "verify") loadVerifyList();
     if (view === "competitors") loadCompetitorsCompanies();
     if (view === "settings") {
       loadCompanies();
@@ -1085,12 +1201,32 @@
         $("searchBtn").disabled = false;
         $("bulkSearchBtn").disabled = false;
         if (isBulk) {
-          $("progressTitle").textContent = `Bulk done — ${(ev.results || []).length} keywords`;
-          appendLog("\n=== Bulk complete ===");
-          (ev.results || []).forEach(r => {
-            appendLog(r.error ? `[FAIL] ${r.keyword}: ${r.error}`
-                              : `[OK] ${r.keyword} → ${r.count} results (id=${r.search_id})`);
-          });
+          const results = ev.results || [];
+          // Detect multi-region by presence of `region` field (vs `keyword` for bulk keywords)
+          const isMultiRegion = results.length > 0 && results[0].region !== undefined;
+          if (isMultiRegion) {
+            $("progressTitle").textContent = `Multi-region done — ${results.length} regions`;
+            appendLog("\n=== Multi-region complete ===");
+            const sids = [];
+            results.forEach(r => {
+              if (r.error) {
+                appendLog(`[FAIL] ${r.region}: ${r.error}`);
+              } else {
+                appendLog(`[OK] ${r.region.toUpperCase()} → ${r.count} results (id=${r.search_id})`);
+                sids.push(r.search_id);
+              }
+            });
+            if (sids.length > 0) {
+              showMultiRegionUnified(sids);
+            }
+          } else {
+            $("progressTitle").textContent = `Bulk done — ${results.length} keywords`;
+            appendLog("\n=== Bulk complete ===");
+            results.forEach(r => {
+              appendLog(r.error ? `[FAIL] ${r.keyword}: ${r.error}`
+                                : `[OK] ${r.keyword} → ${r.count} results (id=${r.search_id})`);
+            });
+          }
           loadCompanies();
         } else {
           _allResults = ev.results || [];
@@ -1162,6 +1298,17 @@
   }
 
   function renderResults() {
+    // Restore standard single-region table header (in case multi-region modified it)
+    const thead = document.querySelector("#view-search table thead");
+    if (thead) {
+      thead.innerHTML = `<tr>
+        <th>SERP</th><th>Domain</th><th>Page Type</th>
+        <th>Status</th><th>Pos on Page</th><th>Link Type</th><th>↗</th>
+      </tr>`;
+    }
+    // Show filter bar again (multi-region may have hidden it)
+    document.querySelectorAll(".filter-bar").forEach(b => b.style.display = "");
+
     let rows = _allResults;
     if (_resultsFilter === "listicle") rows = rows.filter(r => (r["Page Type"] || "").startsWith("Listicle"));
     if (_resultsFilter === "listed")   rows = rows.filter(r => r["Status"] === "Listed");
@@ -1188,8 +1335,11 @@
         <td style="white-space:nowrap">
           <a class="open-link" href="${escapeHtml(url)}" target="_blank" title="Open">↗</a>
           <button onclick="openVerifyModal('${url.replace(/'/g, "\\'")}','${dom}')"
-                  style="background:none;border:none;cursor:pointer;color:#2E75B6;font-size:1rem;padding:0 4px;margin-left:4px"
-                  title="Verify">🔍</button>
+                  style="background:none;border:none;cursor:pointer;color:#2E75B6;font-size:1rem;padding:0 4px;margin-left:2px"
+                  title="Re-verify URL">🔍</button>
+          ${r["_result_id"] || r["result_id"] ? `<button onclick="openListicleScore(${r["_result_id"] || r["result_id"]})"
+                  style="background:none;border:none;cursor:pointer;color:#9333EA;font-size:1rem;padding:0 4px;margin-left:2px"
+                  title="Priority Score (Semrush — 10 units if not cached)">⭐</button>` : ''}
         </td>
       </tr>`;
     }).join("");
@@ -1217,14 +1367,46 @@
       $("resultsVerifyActions").innerHTML = "";
       return;
     }
-    let html = googleLinkButton(_lastSearchKeyword, _lastSearchRegion,
-                                 `Verify on Google (${_lastSearchRegion.toUpperCase()})`);
+    let html = "";
+    // Export button — first priority
+    if (_lastSearchId) {
+      html += `<button onclick="exportCurrentSearch()" class="btn btn-sm"
+                 style="background:#217346;color:#fff;padding:5px 14px;border-radius:5px;border:none;cursor:pointer;font-size:.82rem;font-weight:600">
+                 ⬇ Export to Excel</button>`;
+    }
+    html += " " + googleLinkButton(_lastSearchKeyword, _lastSearchRegion,
+                                    `Verify on Google (${_lastSearchRegion.toUpperCase()})`);
     if (_lastSearchId) {
       html += ` <button onclick="compareSERP(${_lastSearchId})" class="btn btn-sm"
                 style="background:#7C3AED;color:#fff;padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:.78rem;font-weight:600">
                 ⚖ Compare cached vs fresh</button>`;
+      html += ` <button onclick="openCrossVerify(${_lastSearchId})" class="btn btn-sm"
+                style="background:#0EA5E9;color:#fff;padding:5px 12px;border-radius:5px;border:none;cursor:pointer;font-size:.78rem;font-weight:600">
+                🔬 Cross-verify</button>`;
     }
     $("resultsVerifyActions").innerHTML = html;
+  }
+
+  async function exportCurrentSearch() {
+    if (!_lastSearchId) return;
+    try {
+      const resp = await fetch("/api/export-history", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ search_ids: [_lastSearchId], domain_filter: null }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || resp.statusText);
+      }
+      const cd = resp.headers.get("Content-Disposition") || "";
+      const m = cd.match(/filename="([^"]+)"/);
+      const fname = m ? m[1] : "search_export.xlsx";
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = fname; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { alert("Export failed: " + e.message); }
   }
 
   // ============================================================
@@ -1300,8 +1482,10 @@
                   style="background:none;border:1px solid #2E75B6;color:#2E75B6;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:.78rem;margin-right:4px">👁 View</button>
           <a href="${gurl}" target="_blank" rel="noopener" title="Live Google SERP (${(h.location || 'us').toUpperCase()})"
              style="display:inline-block;background:#4285F4;color:#fff;border-radius:4px;padding:3px 8px;font-size:.78rem;text-decoration:none;margin-right:4px">🌐 Google</a>
-          <button onclick="compareSERP(${h.search_id})" title="Compare cached vs fresh SERP"
+          <button onclick="compareSERP(${h.search_id})" title="Compare cached vs fresh SERP (1 Serper call)"
                   style="background:none;border:1px solid #7C3AED;color:#7C3AED;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:.78rem;margin-right:4px">⚖ Compare</button>
+          <button onclick="openCrossVerify(${h.search_id})" title="Cross-verify Serper vs Semrush (smart cache)"
+                  style="background:none;border:1px solid #0EA5E9;color:#0EA5E9;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:.78rem;margin-right:4px">🔬 Cross-verify</button>
           <button onclick="rerunSearch(${h.search_id})" title="Re-run search"
                   style="background:none;border:1px solid #217346;color:#217346;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:.78rem;margin-right:4px">🔄 Re-run</button>
           <button onclick="deleteSearchEntry(${h.search_id})" title="Delete"
@@ -2094,10 +2278,14 @@
           <td style="padding:10px;font-size:.78rem;color:#6B7280">
             ${(c.sample_keywords || []).map(s => `<span style="background:#F3F4F6;padding:2px 6px;border-radius:3px;margin-right:4px">${escapeHtml(s)}</span>`).join("")}
           </td>
-          <td style="padding:10px;text-align:center">
+          <td style="padding:10px;text-align:center;white-space:nowrap">
             <button class="btn btn-primary btn-sm"
                     onclick="loadCoverageGaps('${data.company.id}','${c.domain.replace(/'/g, "\\'")}', '${escapeHtml(data.company.name).replace(/'/g, "\\'")}')">
-              View Gaps
+              Gaps
+            </button>
+            <button class="btn btn-sm" style="background:#9333EA;color:#fff;margin-left:4px"
+                    onclick="openMineCompetitor(${data.company.id}, '${c.domain.replace(/'/g, "\\'")}')">
+              💎 Mine
             </button>
           </td>
         </tr>`).join("")}
@@ -2174,6 +2362,864 @@
     `;
     $("coverageGapCard").style.display = "block";
     $("coverageGapCard").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  // ============================================================
+  // MULTI-REGION SEARCH
+  // ============================================================
+  function toggleMultiRegion() {
+    const on = $("enableMultiRegion").checked;
+    $("multiRegionPanel").style.display = on ? "block" : "none";
+    if (on) updateMultiRegionEstimate();
+    document.querySelectorAll('#regionChips input').forEach(cb => {
+      cb.addEventListener('change', updateMultiRegionEstimate);
+    });
+  }
+
+  function updateMultiRegionEstimate() {
+    const checked = Array.from(document.querySelectorAll('#regionChips input:checked'))
+                         .map(cb => cb.dataset.region);
+    const target = parseInt($("targetListicles").value) || 10;
+    // Rough estimate — pages = target / 5 (avg)
+    const credits = checked.length * Math.max(1, Math.ceil(target / 5));
+    $("multiRegionEstimate").innerHTML =
+      `${checked.length} region${checked.length > 1 ? 's' : ''} selected → estimated <strong>~${credits}</strong> Serper credits total`;
+  }
+
+  function getSelectedRegions() {
+    return Array.from(document.querySelectorAll('#regionChips input:checked'))
+                .map(cb => cb.dataset.region);
+  }
+
+  // Patch startSearch to handle multi-region
+  const _origStartSearch = window.startSearch || null;
+  window.startSearch = async function() {
+    const multi = $("enableMultiRegion") && $("enableMultiRegion").checked;
+    if (!multi) {
+      // fall through to single-region behavior
+      return doSingleSearch();
+    }
+    const keyword = $("keyword").value.trim();
+    if (!keyword) { $("keyword").focus(); return; }
+    const regions = getSelectedRegions();
+    if (regions.length === 0) { alert("Select at least one region"); return; }
+
+    const company_id_raw = $("companySelect").value;
+    const company_id = company_id_raw ? parseInt(company_id_raw) : null;
+    const target_listicles = parseInt($("targetListicles").value);
+
+    resetSearchUI();
+    $("progressCard").style.display = "block";
+    $("searchBtn").disabled = true;
+
+    // Scale max_pages with target depth (more listicles → more SERP pages)
+    const maxPages = Math.max(5, Math.ceil(target_listicles / 2));
+    let runId;
+    try {
+      const resp = await fetch("/api/search/multi-region", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          keyword, regions, company_id, target_listicles, max_pages: maxPages, mode: "free",
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.detail || resp.statusText);
+      }
+      runId = (await resp.json()).run_id;
+    } catch (e) {
+      showError(e.message);
+      $("searchBtn").disabled = false;
+      $("spinner").style.display = "none";
+      return;
+    }
+    streamProgress(runId, true);
+  };
+
+  async function doSingleSearch() {
+    const keyword = $("keyword").value.trim();
+    if (!keyword) { $("keyword").focus(); return; }
+
+    const company_id_raw = $("companySelect").value;
+    const company_id = company_id_raw ? parseInt(company_id_raw) : null;
+    const domain = $("domain").value.trim();
+    const region = $("region").value;
+    const target_listicles = parseInt($("targetListicles").value);
+
+    resetSearchUI();
+    $("progressCard").style.display = "block";
+    $("searchBtn").disabled = true;
+
+    let runId;
+    try {
+      const resp = await fetch("/api/search", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          keyword, domain, company_id, mode: "free", region,
+          target_listicles, max_pages: 20, contacts: false,
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.detail || resp.statusText);
+      }
+      runId = (await resp.json()).run_id;
+    } catch (e) {
+      showError(e.message);
+      $("searchBtn").disabled = false;
+      $("spinner").style.display = "none";
+      return;
+    }
+    streamProgress(runId, false);
+  }
+
+  // ============================================================
+  // FIND EVERYTHING — preset: US+IN+UK, deep, with cost preview
+  // ============================================================
+  function openFindEverything() {
+    const keyword = $("keyword").value.trim();
+    if (!keyword) {
+      alert("Enter a keyword first");
+      $("keyword").focus();
+      return;
+    }
+    const company_id_raw = $("companySelect").value;
+    const company = company_id_raw ? _companies.find(c => c.id == company_id_raw) : null;
+
+    // Preset config
+    const regions = ["us", "in", "uk"];
+    const targetListicles = 30;
+    const maxPagesPerRegion = Math.ceil(targetListicles / 2);  // ~15 SERP pages
+    // Conservative cost estimate: target/5 credits per region (since each page = 10 results)
+    const creditsPerRegion = Math.ceil(targetListicles / 5);
+    const totalCredits = creditsPerRegion * regions.length;
+
+    $("findEverythingContent").innerHTML = `
+      <div style="background:linear-gradient(135deg,#F3E8FF,#EDE9FE);padding:14px 18px;border-radius:8px;margin-bottom:16px;border-left:4px solid #7C3AED">
+        <div style="font-weight:700;color:#5B21B6;margin-bottom:6px">"${escapeHtml(keyword)}"</div>
+        <div style="font-size:.85rem;color:#5A6A7E">
+          ${company ? `Company: <strong>${escapeHtml(company.name)}</strong><br>` : ''}
+          Searches across <strong>US 🇺🇸 + India 🇮🇳 + UK 🇬🇧</strong> with <strong>deep coverage (30 listicles)</strong> per region.
+          Aggregates into a single wide-format view + Excel.
+        </div>
+      </div>
+
+      <h4 style="margin:0 0 8px;color:#1F4E78;font-size:.9rem">What this does:</h4>
+      <ul style="font-size:.85rem;color:#3A4D63;padding-left:20px;margin-bottom:14px;line-height:1.7">
+        <li>Searches the same keyword across 3 regions sequentially</li>
+        <li>Catches sites ranking #15-30 (deep mode)</li>
+        <li>Deduplicates URLs across regions</li>
+        <li>Builds wide-format table: US Pos | IN Pos | UK Pos for each URL</li>
+        <li>One unified Excel export with region columns</li>
+      </ul>
+
+      <div style="background:#FAFBFC;border:1px solid #E0E8F0;border-radius:6px;padding:12px;margin-bottom:14px">
+        <div style="font-size:.78rem;color:#6B7280;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Estimated Cost</div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <span style="font-size:1.6rem;font-weight:800;color:#1F4E78">~${totalCredits}</span>
+            <span style="font-size:.85rem;color:#6B7280;margin-left:4px">Serper credits</span>
+          </div>
+          <div style="text-align:right;font-size:.78rem;color:#6B7280">
+            ${regions.length} regions × ~${creditsPerRegion} credits each<br>
+            Semrush: 0 units
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="closeModal('findEverythingModal')">Cancel</button>
+        <button onclick="runFindEverything()"
+                style="background:linear-gradient(135deg,#9333EA,#7C3AED);color:#fff;padding:9px 22px;border:none;border-radius:7px;cursor:pointer;font-size:.92rem;font-weight:600">
+          🎯 Run Find Everything
+        </button>
+      </div>
+    `;
+    $("findEverythingModal").style.display = "block";
+  }
+
+  async function runFindEverything() {
+    closeModal("findEverythingModal");
+    const keyword = $("keyword").value.trim();
+    if (!keyword) return;
+    const company_id_raw = $("companySelect").value;
+    const company_id = company_id_raw ? parseInt(company_id_raw) : null;
+
+    // Hard-coded preset for "Find Everything"
+    const regions = ["us", "in", "uk"];
+    const target_listicles = 30;
+    const max_pages = 15;
+
+    resetSearchUI();
+    $("progressCard").style.display = "block";
+    $("searchBtn").disabled = true;
+    $("findEverythingBtn").disabled = true;
+
+    appendLog("🎯 FIND EVERYTHING — preset US + IN + UK, depth 30");
+    appendLog("");
+
+    let runId;
+    try {
+      const resp = await fetch("/api/search/multi-region", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          keyword, regions, company_id, target_listicles, max_pages, mode: "free",
+        }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.detail || resp.statusText);
+      }
+      runId = (await resp.json()).run_id;
+    } catch (e) {
+      showError(e.message);
+      $("searchBtn").disabled = false;
+      $("findEverythingBtn").disabled = false;
+      $("spinner").style.display = "none";
+      return;
+    }
+    streamProgress(runId, true);
+    // Re-enable button after completion (streamProgress doesn't know about it)
+    const origInterval = setInterval(() => {
+      if (!$("searchBtn").disabled) {
+        $("findEverythingBtn").disabled = false;
+        clearInterval(origInterval);
+      }
+    }, 500);
+  }
+
+  // ============================================================
+  // MULTI-REGION UNIFIED VIEW (wide format)
+  // ============================================================
+  let _lastMultiRegionSids = [];
+
+  async function showMultiRegionUnified(searchIds) {
+    _lastMultiRegionSids = searchIds;
+    try {
+      const resp = await fetch("/api/search/multi-region/merge", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ search_ids: searchIds, export: false }),
+      });
+      if (!resp.ok) throw new Error("Merge failed");
+      const data = await resp.json();
+      renderMultiRegionUnified(data);
+    } catch (e) {
+      appendLog(`Merge error: ${e.message}`);
+    }
+  }
+
+  function renderMultiRegionUnified(data) {
+    const merged = data.merged_results || [];
+    const regions = data.regions || [];
+    const stats = data.stats || {};
+
+    $("resultsTitle").textContent =
+      `🌍 Multi-Region Unified — "${data.keyword}" · ${regions.length} regions`;
+
+    // Action buttons
+    $("resultsVerifyActions").innerHTML = `
+      <button onclick="exportMultiRegion()" class="btn btn-sm"
+              style="background:#217346;color:#fff;padding:5px 14px;border-radius:5px;border:none;cursor:pointer;font-size:.82rem;font-weight:600">
+        ⬇ Export to Excel (Wide Format)
+      </button>
+    `;
+
+    // Stats bar
+    $("statsBar").innerHTML = [
+      [stats.total_urls,      "Unique URLs"],
+      [stats.multi_region,    "Multi-Region"],
+      [stats.single_region,   "Single Region"],
+      [regions.length,        "Regions"],
+    ].map(([n, l]) => `<div class="stat"><div class="num">${n}</div><div class="lbl">${l}</div></div>`).join("");
+
+    // Hide filter bar (it's for single-region results)
+    document.querySelectorAll(".filter-bar").forEach(b => b.style.display = "none");
+
+    // Build wide table
+    const flagOf = r => ({us:"🇺🇸",uk:"🇬🇧",in:"🇮🇳",ca:"🇨🇦",au:"🇦🇺",de:"🇩🇪",fr:"🇫🇷",sg:"🇸🇬",ae:"🇦🇪"}[r] || r.toUpperCase());
+    const headerRow = `
+      <tr>
+        <th>Domain</th>
+        ${regions.map(r => `<th style="background:#2E75B6">${flagOf(r)} ${r.toUpperCase()}</th>`).join("")}
+        <th>Best</th>
+        <th>Page Type</th>
+        <th>↗</th>
+      </tr>`;
+
+    const rowsHtml = merged.map(r => {
+      const regionCells = regions.map(rg => {
+        const d = (r.by_region || {})[rg];
+        if (!d) return `<td style="text-align:center;color:#9CA3AF">—</td>`;
+        const pos = d.serp_pos;
+        const status = d.status;
+        const statusBadge = status === "Listed"
+          ? `<span class="badge badge-valid" style="margin-left:4px">✓</span>` : "";
+        return `<td style="text-align:center"><strong>#${pos}</strong>${statusBadge}</td>`;
+      }).join("");
+      const regionCount = r.region_count;
+      const regionLabel = regionCount === regions.length ? "🌍 ALL" :
+                          regionCount > 1 ? `🌎 ${regionCount}/${regions.length}` :
+                          `${flagOf(r.regions_listed[0])} ONLY`;
+      return `<tr>
+        <td><strong>${escapeHtml(r.domain || "")}</strong>
+          <br><span style="font-size:.72rem;color:#6B7280">${regionLabel}</span>
+        </td>
+        ${regionCells}
+        <td style="text-align:center;font-weight:700">${r.best_pos ?? "—"}</td>
+        <td>${pageBadge(r.page_type)}</td>
+        <td><a href="${escapeHtml(r.url)}" target="_blank" class="open-link">↗</a></td>
+      </tr>`;
+    }).join("");
+
+    $("resultsBody").innerHTML = rowsHtml || `<tr><td colspan="${regions.length + 4}" style="padding:30px;text-align:center;color:#8A9BB0">No results</td></tr>`;
+
+    // Replace the table header
+    const thead = document.querySelector("#view-search table thead");
+    if (thead) thead.innerHTML = headerRow;
+
+    $("resultsCard").style.display = "block";
+    $("resultsCard").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function exportMultiRegion() {
+    if (_lastMultiRegionSids.length === 0) return;
+    try {
+      const resp = await fetch("/api/search/multi-region/merge", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ search_ids: _lastMultiRegionSids, export: true }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || resp.statusText);
+      }
+      const cd = resp.headers.get("Content-Disposition") || "";
+      const m = cd.match(/filename="([^"]+)"/);
+      const fname = m ? m[1] : "multi_region.xlsx";
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = fname; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { alert("Export failed: " + e.message); }
+  }
+
+  // ============================================================
+  // MINE COMPETITOR KEYWORDS (Semrush domain_organic — 10 units)
+  // ============================================================
+  async function openMineCompetitor(companyId, competitorDomain) {
+    $("mineModal").style.display = "block";
+    $("mineContent").innerHTML = `<div style="text-align:center;padding:30px">
+      <div class="spinner"></div><p>Checking cache + cost...</p></div>`;
+    try {
+      const url = `/api/competitors/mine-preview/${companyId}?competitor_domain=${encodeURIComponent(competitorDomain)}&region=us`;
+      const prev = await (await fetch(url)).json();
+      renderMinePreview(prev, companyId, competitorDomain);
+    } catch (e) {
+      $("mineContent").innerHTML = `<div class="error-box" style="display:block">Error: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function renderMinePreview(prev, companyId, competitorDomain) {
+    const cache = prev.cache || {};
+    const cacheBadge = cache.fresh
+      ? `<span style="background:#DCFCE7;color:#15803D;padding:3px 10px;border-radius:4px;font-size:.85rem;font-weight:600">✓ Cached ${cache.age_hours}h ago — FREE</span>`
+      : cache.cached
+        ? `<span style="background:#FEF3C7;color:#92400E;padding:3px 10px;border-radius:4px;font-size:.85rem;font-weight:600">Stale (${cache.age_hours}h old) — refresh costs 10 units</span>`
+        : `<span style="background:#FEE2E2;color:#991B1B;padding:3px 10px;border-radius:4px;font-size:.85rem;font-weight:600">No cache — will cost 10 Semrush units</span>`;
+
+    $("mineContent").innerHTML = `
+      <div style="background:#F7FAFD;padding:14px;border-radius:6px;margin-bottom:14px">
+        <strong style="color:#1F4E78">${escapeHtml(competitorDomain)}</strong>
+        <p style="font-size:.85rem;color:#5A6A7E;margin:6px 0 0">
+          Find what keywords this competitor ranks for. Top 10 by traffic. Cached 30 days after first fetch.
+        </p>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#FAFBFC;border:1px solid #E0E8F0;border-radius:6px;margin-bottom:14px">
+        ${cacheBadge}
+        <span style="font-size:.78rem;color:#6B7280">This month: ${prev.semrush_spent_this_month} units used</span>
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:.78rem;font-weight:600;color:#5A6A7E;margin-bottom:4px">Region</label>
+        <select id="mineRegion" style="padding:8px 12px;border:1.5px solid #D0D9E3;border-radius:6px;font-size:.92rem">
+          <option value="us">US</option>
+          <option value="uk">UK</option>
+          <option value="in">India</option>
+          <option value="ca">Canada</option>
+          <option value="au">Australia</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="closeModal('mineModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="runMineCompetitor(${companyId}, '${competitorDomain.replace(/'/g, "\\'")}')">
+          ${cache.fresh ? '⚡ Load from cache' : '💎 Mine (10 units)'}
+        </button>
+      </div>
+    `;
+  }
+
+  async function runMineCompetitor(companyId, competitorDomain) {
+    const region = $("mineRegion").value;
+    $("mineContent").innerHTML = `<div style="text-align:center;padding:30px">
+      <div class="spinner"></div><p>Fetching keywords for ${escapeHtml(competitorDomain)}...</p></div>`;
+    try {
+      const resp = await fetch(`/api/competitors/mine/${companyId}?competitor_domain=${encodeURIComponent(competitorDomain)}`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ region, display_limit: 10, force_fresh: false }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || resp.statusText);
+      }
+      const data = await resp.json();
+      renderMineResult(data, companyId);
+    } catch (e) {
+      $("mineContent").innerHTML = `<div class="error-box" style="display:block">Error: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function renderMineResult(data, companyId) {
+    const kws = data.keywords || [];
+    const srcBadge = data.source === "cache"
+      ? `<span style="color:#15803D">✓ From cache · 0 units</span>`
+      : `<span style="color:#92400E">🔥 Fresh fetch · ${data.units_spent} units used</span>`;
+
+    if (kws.length === 0) {
+      $("mineContent").innerHTML = `<p style="color:#6B7280;text-align:center;padding:20px">
+        Semrush returned no organic keywords for <strong>${escapeHtml(data.competitor_domain)}</strong> in ${data.region.toUpperCase()}.
+        Try a different region or this domain may not have measurable organic traffic.
+      </p>`;
+      return;
+    }
+
+    $("mineContent").innerHTML = `
+      <div style="background:#F7FAFD;padding:12px;border-radius:6px;margin-bottom:14px;display:flex;justify-content:space-between">
+        <strong>${escapeHtml(data.competitor_domain)} · ${data.region.toUpperCase()}</strong>
+        <span>${srcBadge}</span>
+      </div>
+      <p style="font-size:.85rem;color:#5A6A7E;margin-bottom:10px">
+        Top ${kws.length} keywords this competitor ranks for. Click "🔍 Search" to find listicles ranking for any keyword (uses 1 Serper credit each).
+      </p>
+      <div style="max-height:420px;overflow-y:auto;border:1px solid #E0E8F0;border-radius:6px">
+        <table style="width:100%;font-size:.85rem">
+          <thead style="background:#1F4E78;color:#fff;position:sticky;top:0">
+            <tr>
+              <th style="padding:8px;text-align:left">Keyword</th>
+              <th style="padding:8px">Pos</th>
+              <th style="padding:8px">Volume</th>
+              <th style="padding:8px">Traffic %</th>
+              <th style="padding:8px">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+          ${kws.map(k => `<tr style="border-bottom:1px solid #EDF2F7">
+            <td style="padding:8px"><strong>${escapeHtml(k.keyword)}</strong></td>
+            <td style="padding:8px;text-align:center">
+              <span class="pos-badge ${k.position <= 3 ? 'pos-gold' : k.position <= 10 ? 'pos-silver' : 'pos-bronze'}">${k.position}</span>
+            </td>
+            <td style="padding:8px;text-align:center">${(k.search_volume || 0).toLocaleString()}</td>
+            <td style="padding:8px;text-align:center">${k.traffic_pct.toFixed(1)}%</td>
+            <td style="padding:8px;text-align:center">
+              <button onclick="searchKeywordFromMine('${k.keyword.replace(/'/g, "\\'")}', '${data.region}', ${companyId})"
+                      style="background:#1F4E78;color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:.78rem">🔍 Search</button>
+            </td>
+          </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function searchKeywordFromMine(keyword, region, companyId) {
+    // Switch to Search tab and prefill the keyword
+    closeModal("mineModal");
+    switchView("search");
+    setTimeout(() => {
+      $("keyword").value = keyword;
+      $("region").value = region;
+      $("companySelect").value = companyId;
+      onCompanyChange();
+      $("keyword").focus();
+      $("keyword").scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+  }
+
+  // ============================================================
+  // LISTICLE PRIORITY SCORE (Semrush url_organic — 10 units)
+  // ============================================================
+  async function openListicleScore(resultId) {
+    $("scoreModal").style.display = "block";
+    $("scoreContent").innerHTML = `<div style="text-align:center;padding:30px">
+      <div class="spinner"></div><p>Loading preview...</p></div>`;
+    try {
+      const prev = await (await fetch(`/api/listicles/${resultId}/score-preview`)).json();
+      renderScorePreview(prev, resultId);
+    } catch (e) {
+      $("scoreContent").innerHTML = `<div class="error-box" style="display:block">Error: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function renderScorePreview(prev, resultId) {
+    const free = prev.will_be_free_if_cached;
+    const cacheBadge = free
+      ? `<span style="background:#DCFCE7;color:#15803D;padding:3px 10px;border-radius:4px;font-size:.85rem;font-weight:600">✓ Available — FREE</span>`
+      : `<span style="background:#FEF3C7;color:#92400E;padding:3px 10px;border-radius:4px;font-size:.85rem;font-weight:600">Will cost 10 Semrush units</span>`;
+    const existing = prev.already_scored
+      ? `<p style="font-size:.85rem;color:#5A6A7E">Last scored: ${new Date(prev.scored_at).toLocaleString()} — Priority: <strong>${prev.current_score}</strong></p>`
+      : `<p style="font-size:.85rem;color:#5A6A7E">Not scored yet.</p>`;
+
+    $("scoreContent").innerHTML = `
+      <div style="background:#F7FAFD;padding:12px;border-radius:6px;margin-bottom:14px">
+        <strong style="color:#1F4E78">${escapeHtml(prev.domain)}</strong><br>
+        <a href="${escapeHtml(prev.url)}" target="_blank" style="font-size:.78rem;color:#6B7280;word-break:break-all">${escapeHtml(prev.url)}</a>
+        ${existing}
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:#FAFBFC;border:1px solid #E0E8F0;border-radius:6px;margin-bottom:14px">
+        ${cacheBadge}
+        <span style="font-size:.78rem;color:#6B7280">Cached 14 days</span>
+      </div>
+      <p style="font-size:.8rem;color:#5A6A7E;margin-bottom:14px">
+        Composite score from <strong>Authority (OPR)</strong>, <strong>Semrush keyword count</strong>,
+        <strong>competitor density on page</strong>, and bonus if you're NOT already listed.
+      </p>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="closeModal('scoreModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="runScoreListicle(${resultId})">
+          ${free ? '⚡ Score (free)' : '⭐ Score (10 units)'}
+        </button>
+      </div>
+    `;
+  }
+
+  async function runScoreListicle(resultId) {
+    $("scoreContent").innerHTML = `<div style="text-align:center;padding:30px">
+      <div class="spinner"></div><p>Computing priority score...</p></div>`;
+    try {
+      const resp = await fetch(`/api/listicles/${resultId}/score`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ force_fresh: false }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || resp.statusText);
+      }
+      const data = await resp.json();
+      renderScoreResult(data);
+    } catch (e) {
+      $("scoreContent").innerHTML = `<div class="error-box" style="display:block">Error: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function renderScoreResult(data) {
+    const b = data.breakdown || {};
+    const scoreColor = data.score >= 70 ? "#16A34A" : data.score >= 40 ? "#F59E0B" : "#6B7280";
+    const scoreLabel = data.score >= 70 ? "HIGH PRIORITY" : data.score >= 40 ? "MEDIUM" : "LOW";
+    const sourceBadge = data.source === "cache"
+      ? `<span style="color:#15803D">✓ From cache · 0 units</span>`
+      : `<span style="color:#92400E">🔥 Fresh · ${data.units_spent} units</span>`;
+    const topKwHtml = (b.top_keywords || []).slice(0, 5).map(k =>
+      `<li style="padding:3px 0;font-size:.82rem"><strong>${escapeHtml(k.keyword)}</strong> · pos #${k.position} · vol ${(k.search_volume || 0).toLocaleString()}</li>`
+    ).join("");
+
+    $("scoreContent").innerHTML = `
+      <div style="text-align:center;padding:18px;background:linear-gradient(135deg,#F7FAFD,#fff);border-radius:8px;margin-bottom:14px">
+        <div style="font-size:.75rem;color:#6B7280;text-transform:uppercase;letter-spacing:.08em">Priority Score</div>
+        <div style="font-size:3rem;font-weight:800;color:${scoreColor};line-height:1">${data.score}</div>
+        <div style="font-size:.85rem;font-weight:600;color:${scoreColor};margin-top:4px">${scoreLabel}</div>
+        <div style="font-size:.75rem;color:#6B7280;margin-top:6px">${sourceBadge}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <div style="background:#FAFBFC;padding:10px;border-radius:6px">
+          <div style="font-size:.7rem;color:#6B7280;text-transform:uppercase">Authority (OPR)</div>
+          <div style="font-size:1.2rem;font-weight:700">${(b.authority_norm * 100).toFixed(0)}/100</div>
+        </div>
+        <div style="background:#FAFBFC;padding:10px;border-radius:6px">
+          <div style="font-size:.7rem;color:#6B7280;text-transform:uppercase">Semrush Keywords</div>
+          <div style="font-size:1.2rem;font-weight:700">${b.keyword_count}</div>
+        </div>
+        <div style="background:#FAFBFC;padding:10px;border-radius:6px">
+          <div style="font-size:.7rem;color:#6B7280;text-transform:uppercase">Companies on Page</div>
+          <div style="font-size:1.2rem;font-weight:700">${b.competitor_count}</div>
+        </div>
+        <div style="background:#FAFBFC;padding:10px;border-radius:6px">
+          <div style="font-size:.7rem;color:#6B7280;text-transform:uppercase">You Listed?</div>
+          <div style="font-size:1.2rem;font-weight:700;color:${b.you_listed ? '#16A34A' : '#dc2626'}">
+            ${b.you_listed ? '✓ Yes' : '✗ No (bonus!)'}
+          </div>
+        </div>
+      </div>
+      ${topKwHtml ? `<div>
+        <h4 style="margin:0 0 6px;font-size:.85rem;color:#1F4E78">Top keywords this URL ranks for</h4>
+        <ul style="margin:0;padding-left:18px;color:#3A4D63">${topKwHtml}</ul>
+      </div>` : ''}
+    `;
+  }
+
+  // ============================================================
+  // SEMRUSH SPEND TRACKER
+  // ============================================================
+  async function refreshSemrushSpend() {
+    try {
+      const d = await (await fetch("/api/semrush/spend")).json();
+      const el = $("semrushSpendBadge");
+      if (!el) return;
+      const pct = d.pct_used != null ? `${d.pct_used}%` : '—';
+      const color = d.pct_used >= 90 ? '#dc2626' : d.pct_used >= 70 ? '#F59E0B' : '#16A34A';
+      el.innerHTML = `Semrush: <strong>${d.month_units}/${d.monthly_limit || '?'}</strong>
+                      <span style="color:${color}">(${pct})</span> ·
+                      today <strong>${d.today_units}</strong>`;
+    } catch (e) {}
+  }
+
+  // ============================================================
+  // CROSS-VERIFY (Serper + Semrush)
+  // ============================================================
+  let _verifyList = [];
+
+  async function loadVerifyList() {
+    try {
+      // Reuse history endpoint; status per search is computed on demand via preview
+      const hist = await (await fetch("/api/history")).json();
+      _verifyList = hist.history || [];
+      renderVerifyList();
+      // Lazy-fetch cache status per search (in parallel)
+      _verifyList.forEach(async (h, idx) => {
+        try {
+          const prev = await (await fetch(`/api/cross-verify/${h.search_id}/preview`)).json();
+          _verifyList[idx]._preview = prev;
+          // Re-render only this row
+          renderVerifyList();
+        } catch (e) {}
+      });
+    } catch (e) { console.error("Verify list load:", e); }
+  }
+
+  function filterVerifyList() {
+    renderVerifyList();
+  }
+
+  function renderVerifyList() {
+    const q = ($("verifySearch")?.value || "").toLowerCase();
+    const status = $("verifyFilterStatus")?.value || "";
+    const tb = $("verifyTableBody");
+    let rows = _verifyList.filter(h =>
+      !q || (h.keyword || "").toLowerCase().includes(q) ||
+            (h.domain || "").toLowerCase().includes(q));
+
+    if (status) {
+      rows = rows.filter(h => {
+        const p = h._preview;
+        if (!p) return status === "never";  // unknown yet — assume not verified
+        const serperCached = p.providers?.serper?.cached;
+        const semrushCached = p.providers?.semrush?.cached;
+        if (status === "never") return !serperCached && !semrushCached;
+        if (status === "partial") return (serperCached || semrushCached) && !(serperCached && semrushCached);
+        if (status === "full") return serperCached && semrushCached;
+        return true;
+      });
+    }
+
+    if (rows.length === 0) {
+      tb.innerHTML = `<tr><td colspan="6" style="padding:30px;text-align:center;color:#8A9BB0">No searches match.</td></tr>`;
+      return;
+    }
+    tb.innerHTML = rows.map(h => {
+      const date = h.timestamp ? new Date(h.timestamp).toLocaleDateString() : "—";
+      const p = h._preview;
+      const cacheBadge = (cached, age) => {
+        if (cached === undefined) return `<span style="color:#9CA3AF;font-size:.75rem">loading…</span>`;
+        if (cached) return `<span style="background:#DCFCE7;color:#15803D;padding:2px 6px;border-radius:3px;font-size:.7rem;font-weight:600">✓ Cached (${age}h)</span>`;
+        return `<span style="background:#FEE2E2;color:#991B1B;padding:2px 6px;border-radius:3px;font-size:.7rem;font-weight:600">Not cached</span>`;
+      };
+      const serperCell = p ? cacheBadge(p.providers?.serper?.cached, p.providers?.serper?.age_hours) : '<span style="color:#9CA3AF;font-size:.75rem">…</span>';
+      const semrushCell = p ? cacheBadge(p.providers?.semrush?.cached, p.providers?.semrush?.age_hours) : '<span style="color:#9CA3AF;font-size:.75rem">…</span>';
+      return `<tr>
+        <td><strong>${escapeHtml(h.keyword)}</strong> <span style="color:#6B7280;font-size:.78rem">(${(h.location || 'us').toUpperCase()})</span></td>
+        <td>${escapeHtml(h.domain || "(no domain)")}</td>
+        <td style="font-size:.85rem;color:#6B7280">${date}</td>
+        <td>${serperCell}</td>
+        <td>${semrushCell}</td>
+        <td>
+          <button onclick="openCrossVerify(${h.search_id})"
+                  style="background:#0EA5E9;color:#fff;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;font-size:.78rem;font-weight:600">🔬 Verify</button>
+        </td>
+      </tr>`;
+    }).join("");
+  }
+
+  async function openCrossVerify(searchId) {
+    $("crossVerifyModal").style.display = "block";
+    $("crossVerifyContent").innerHTML = `<div style="text-align:center;padding:40px">
+      <div class="spinner"></div><p>Loading preview...</p></div>`;
+    try {
+      const prev = await (await fetch(`/api/cross-verify/${searchId}/preview`)).json();
+      renderCrossVerifyPreview(prev, searchId);
+    } catch (e) {
+      $("crossVerifyContent").innerHTML = `<div class="error-box" style="display:block">Error: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function renderCrossVerifyPreview(p, searchId) {
+    const providers = p.providers || {};
+    const provHtml = Object.entries(providers).map(([key, info]) => {
+      const cachedBadge = info.cached
+        ? `<span style="background:#DCFCE7;color:#15803D;padding:3px 8px;border-radius:4px;font-size:.78rem;font-weight:600">✓ Cached ${info.age_hours}h ago — FREE</span>`
+        : info.available
+          ? `<span style="background:#FEF3C7;color:#92400E;padding:3px 8px;border-radius:4px;font-size:.78rem;font-weight:600">Will cost ${info.cost_per_call}</span>`
+          : `<span style="background:#FEE2E2;color:#991B1B;padding:3px 8px;border-radius:4px;font-size:.78rem;font-weight:600">No key configured</span>`;
+      return `<label style="display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid #E0E8F0;border-radius:6px;background:#FAFBFC;margin-bottom:8px;cursor:${info.available ? 'pointer' : 'not-allowed'};${info.available ? '' : 'opacity:.5'}">
+        <input type="checkbox" data-provider="${key}" ${info.available ? 'checked' : 'disabled'}>
+        <div style="flex:1">
+          <strong>${escapeHtml(info.name)}</strong><br>
+          <span style="color:#6B7280;font-size:.8rem">${info.available ? 'Top results for cross-verification' : 'Add key in Settings → API Keys'}</span>
+        </div>
+        ${cachedBadge}
+      </label>`;
+    }).join("");
+
+    $("crossVerifyContent").innerHTML = `
+      <div style="background:#F7FAFD;padding:12px 14px;border-radius:6px;margin-bottom:14px">
+        <strong style="color:#1F4E78">"${escapeHtml(p.keyword)}"</strong>
+        <span style="color:#6B7280;font-size:.85rem"> · ${p.region.toUpperCase()} · search from ${p.search_timestamp ? new Date(p.search_timestamp).toLocaleString() : '—'}</span>
+      </div>
+      <p style="font-size:.85rem;color:#5A6A7E;margin-bottom:14px">
+        Select providers to query. <strong>Cached results within ${p.cache_window_hours} hours are FREE</strong> (no API call).
+      </p>
+      <div style="margin-bottom:14px">${provHtml}</div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;color:#5A6A7E;margin-bottom:14px">
+        <input type="checkbox" id="forceFresh">
+        Force fresh fetch (bypass cache — costs even if cached)
+      </label>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn btn-ghost" onclick="closeModal('crossVerifyModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="runCrossVerify(${searchId})">🔬 Run Verification</button>
+      </div>
+    `;
+  }
+
+  async function runCrossVerify(searchId) {
+    const checked = Array.from(document.querySelectorAll('#crossVerifyContent input[data-provider]:checked'))
+                         .map(cb => cb.dataset.provider);
+    if (checked.length === 0) { alert("Select at least one provider"); return; }
+    const forceFresh = $("forceFresh").checked;
+
+    $("crossVerifyContent").innerHTML = `<div style="text-align:center;padding:40px">
+      <div class="spinner"></div>
+      <p>Running cross-verify (${checked.join(" + ")})...</p>
+      <p style="font-size:.78rem;color:#6B7280">Up to ~5 seconds per fresh provider</p></div>`;
+
+    try {
+      const resp = await fetch(`/api/cross-verify/${searchId}`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ providers: checked, force_fresh: forceFresh }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.detail || resp.statusText);
+      }
+      const data = await resp.json();
+      renderCrossVerifyResult(data);
+    } catch (e) {
+      $("crossVerifyContent").innerHTML = `<div class="error-box" style="display:block">Error: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function renderCrossVerifyResult(data) {
+    const merged = data.merged_results || [];
+    const stats = data.stats || {};
+    const summary = data.per_provider_summary || {};
+    const cost = data.cost_consumed || {};
+    const fresh = data.fetched_fresh_for || [];
+    const cached = data.used_cache_for || [];
+
+    const providersHeaderHtml = (data.providers_queried || []).map(p => {
+      const s = summary[p] || {};
+      const src = s.source === "cache" ? `cached ${s.fetched_at ? new Date(s.fetched_at).toLocaleString() : ''}` :
+                  s.source === "fresh" ? "fresh" :
+                  s.source === "no_key" ? "no key" : (s.source || "error");
+      return `<div style="background:#F7FAFD;padding:10px;border-radius:6px;flex:1">
+        <div style="font-weight:600;color:#1F4E78">${p}</div>
+        <div style="font-size:.78rem;color:#6B7280">${s.count} results · ${src}</div>
+        ${s.error ? `<div style="color:#dc2626;font-size:.75rem;margin-top:4px">${escapeHtml(s.error)}</div>` : ''}
+      </div>`;
+    }).join("");
+
+    const costLine = [];
+    if (cost.serper) costLine.push(`${cost.serper} Serper credits`);
+    if (cost.semrush) costLine.push(`${cost.semrush} Semrush units`);
+    const costStr = costLine.length ? costLine.join(" + ") : "0 API calls (all cached!)";
+
+    const rowsHtml = merged.map(r => {
+      const cBadge = r.confidence === "high" ?
+        `<span style="background:#DCFCE7;color:#15803D;padding:2px 7px;border-radius:3px;font-size:.7rem;font-weight:700">HIGH</span>` :
+        r.confidence === "medium" ?
+        `<span style="background:#FEF3C7;color:#92400E;padding:2px 7px;border-radius:3px;font-size:.7rem;font-weight:700">MED</span>` :
+        `<span style="background:#FEE2E2;color:#991B1B;padding:2px 7px;border-radius:3px;font-size:.7rem;font-weight:700">LOW</span>`;
+
+      const posCells = (data.providers_queried || []).map(p => {
+        const pos = r.positions?.[p];
+        if (pos == null) return `<td style="padding:6px 8px;text-align:center;color:#9CA3AF">—</td>`;
+        return `<td style="padding:6px 8px;text-align:center;font-weight:600">${pos}</td>`;
+      }).join("");
+
+      const dom = r.domain || (r.url || "").replace(/^https?:\/\/(www\.)?/, "").split("/")[0];
+      return `<tr style="border-bottom:1px solid #EDF2F7">
+        <td style="padding:6px 8px"><strong>${escapeHtml(dom)}</strong><br>
+          <a href="${escapeHtml(r.url)}" target="_blank" style="color:#6B7280;font-size:.72rem">${escapeHtml((r.url || '').substring(0,55))}…</a>
+        </td>
+        ${posCells}
+        <td style="padding:6px 8px;text-align:center;font-weight:700">${r.best_position ?? '—'}</td>
+        <td style="padding:6px 8px;text-align:center">${r.spread > 0 ? r.spread : '—'}</td>
+        <td style="padding:6px 8px;text-align:center">${cBadge}</td>
+      </tr>`;
+    }).join("");
+
+    const provHeaderCells = (data.providers_queried || []).map(p =>
+      `<th style="padding:6px;text-align:center">${p}</th>`).join("");
+
+    $("crossVerifyContent").innerHTML = `
+      <div style="background:#F0F4F8;padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:.85rem">
+        <strong>"${escapeHtml(data.keyword)}"</strong> · ${data.region.toUpperCase()}
+        <span style="float:right;color:#6B7280">Cost: <strong>${costStr}</strong></span>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-bottom:14px">${providersHeaderHtml}</div>
+
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+        <div class="stat-card" style="border-left-color:#2563EB">
+          <div class="label">Unique URLs</div><div class="value">${stats.total_unique_urls}</div>
+        </div>
+        <div class="stat-card" style="border-left-color:#16A34A">
+          <div class="label">High conf</div><div class="value">${stats.high_confidence}</div>
+        </div>
+        <div class="stat-card" style="border-left-color:#F59E0B">
+          <div class="label">Medium</div><div class="value">${stats.medium_confidence}</div>
+        </div>
+        <div class="stat-card" style="border-left-color:#DC2626">
+          <div class="label">Low (1 only)</div><div class="value">${stats.low_confidence}</div>
+        </div>
+      </div>
+
+      ${merged.length === 0 ? `<p style="color:#6B7280;padding:20px;text-align:center">No results merged. Check provider errors above.</p>` : `
+      <div style="max-height:480px;overflow-y:auto;border:1px solid #E0E8F0;border-radius:6px">
+        <table style="width:100%;font-size:.83rem">
+          <thead style="background:#1F4E78;color:#fff;position:sticky;top:0">
+            <tr>
+              <th style="padding:8px;text-align:left">Domain / URL</th>
+              ${provHeaderCells}
+              <th style="padding:8px;text-align:center">Best</th>
+              <th style="padding:8px;text-align:center">Spread</th>
+              <th style="padding:8px;text-align:center">Confidence</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>`}
+
+      <div style="margin-top:12px;font-size:.78rem;color:#5A6A7E">
+        💡 HIGH = present in all queried providers · MED = present in 2 of ≥2 ·
+        LOW = only 1 provider saw it (may be stale or provider-specific)
+      </div>
+    `;
   }
 
   // ============================================================
@@ -2357,6 +3403,9 @@
   // First load
   loadCompanies();
   loadDashboard();
+  refreshSemrushSpend();
+  // Refresh spend tracker every 30 seconds
+  setInterval(refreshSemrushSpend, 30000);
 </script>
 </body>
 </html>

@@ -6,6 +6,7 @@ Imported and registered onto the main app in api.py.
 from fastapi import HTTPException
 from pydantic import BaseModel
 import requests as _http
+import re
 
 
 # ── Pydantic models ──────────────────────────────────────────────────────
@@ -16,6 +17,35 @@ class AggregatorRequest(BaseModel):
 
 class VideoDomainRequest(BaseModel):
     domain: str
+
+
+class CrossVerifyRequest(BaseModel):
+    providers:   list[str] = ["serper", "semrush"]
+    force_fresh: bool      = False  # If True, ignore cache and fetch fresh
+
+
+class MultiRegionSearchRequest(BaseModel):
+    keyword:          str
+    regions:          list[str]  = ["us", "uk", "in"]
+    company_id:       int | None = None
+    target_listicles: int        = 10
+    max_pages:        int        = 5
+    mode:             str        = "free"
+
+
+class MultiRegionMergeRequest(BaseModel):
+    search_ids: list[int]
+    export:     bool = False  # If true, returns Excel file instead of JSON
+
+
+class CompetitorMineRequest(BaseModel):
+    region:        str = "us"
+    display_limit: int = 10
+    force_fresh:   bool = False
+
+
+class ListicleScoreRequest(BaseModel):
+    force_fresh: bool = False
 
 
 class ApiKeyRequest(BaseModel):
@@ -470,6 +500,602 @@ def register_routes(app, agent, database):
 
         threading.Thread(target=worker, daemon=True).start()
         return {"run_id": run_id}
+
+    # ── Cross-verify SERP (Serper + Semrush) ───────────────────────────
+
+    @app.get("/api/cross-verify/{search_id}/preview")
+    async def cross_verify_preview(search_id: int):
+        """
+        Preview which providers are cached vs need fresh API calls.
+        Returns cache status per provider + estimated cost.
+        """
+        import sqlite3
+        conn = sqlite3.connect(database.DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("""SELECT s.id, k.keyword, k.location, s.timestamp
+                     FROM searches s JOIN keywords k ON s.keyword_id = k.id
+                     WHERE s.id = ?""", (search_id,))
+        srow = c.fetchone()
+        conn.close()
+        if not srow:
+            raise HTTPException(404, "Search not found")
+
+        cache_status = database.get_cross_verify_status(search_id, max_age_hours=12)
+
+        # Compute per-provider availability + cost
+        providers_info = {}
+        # Serper
+        serper_key = database.get_active_api_key("serper")
+        cached = cache_status.get("serper", {})
+        providers_info["serper"] = {
+            "name": "Serper.dev",
+            "available": bool(serper_key),
+            "cached": cached.get("fresh", False),
+            "age_hours": cached.get("age_hours"),
+            "fetched_at": cached.get("fetched_at"),
+            "cost_per_call": "1 credit",
+            "cost_unit": "credit",
+            "free_if_cached": True,
+        }
+        # Semrush
+        semrush_key = database.get_active_api_key("semrush")
+        cached = cache_status.get("semrush", {})
+        providers_info["semrush"] = {
+            "name": "Semrush phrase_organic",
+            "available": bool(semrush_key),
+            "cached": cached.get("fresh", False),
+            "age_hours": cached.get("age_hours"),
+            "fetched_at": cached.get("fetched_at"),
+            "cost_per_call": "10 units",
+            "cost_unit": "units",
+            "free_if_cached": True,
+        }
+
+        return {
+            "search_id": search_id,
+            "keyword": srow["keyword"],
+            "region": srow["location"] or "us",
+            "search_timestamp": srow["timestamp"],
+            "cache_window_hours": 12,
+            "providers": providers_info,
+        }
+
+    @app.post("/api/cross-verify/{search_id}")
+    async def cross_verify_run(search_id: int, req: CrossVerifyRequest):
+        """
+        Run cross-verification. For each provider:
+          - If cached (<12h) and not force_fresh → use cache
+          - Else → fetch fresh + save to cache
+        Then merge results into a comparison table with confidence flags.
+        """
+        import sqlite3
+        conn = sqlite3.connect(database.DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        c.execute("""SELECT s.id, k.keyword, k.location
+                     FROM searches s JOIN keywords k ON s.keyword_id = k.id
+                     WHERE s.id = ?""", (search_id,))
+        srow = c.fetchone()
+        conn.close()
+        if not srow:
+            raise HTTPException(404, "Search not found")
+        keyword = srow["keyword"]
+        region  = srow["location"] or "us"
+
+        providers = [p.strip().lower() for p in (req.providers or []) if p.strip()]
+        if not providers:
+            raise HTTPException(400, "No providers selected")
+
+        # Per-provider data: list of {position, domain, url, title}
+        per_provider = {}
+        used_cache_for = []
+        fetched_fresh_for = []
+        cost_summary = {"serper": 0, "semrush": 0}  # credits/units consumed
+
+        for prov in providers:
+            cached_results, fetched_at = (None, None)
+            if not req.force_fresh:
+                cached_results, fetched_at = database.get_cross_verify_cache(
+                    search_id, prov, max_age_hours=12)
+
+            if cached_results is not None:
+                per_provider[prov] = {
+                    "results": cached_results,
+                    "source":  "cache",
+                    "fetched_at": fetched_at,
+                }
+                used_cache_for.append(prov)
+                continue
+
+            # Need to fetch fresh
+            try:
+                if prov == "serper":
+                    creds = agent.get_creds("free")
+                    if creds.get("provider") != "serper":
+                        per_provider[prov] = {"results": [], "source": "no_key",
+                                              "error": "Serper.dev key not configured"}
+                        continue
+                    results = agent.fetch_serp_page(keyword, creds, page_num=1, region=region)
+                    cost_summary["serper"] += 1
+                elif prov == "semrush":
+                    skey_row = database.get_active_api_key("semrush")
+                    if not skey_row:
+                        per_provider[prov] = {"results": [], "source": "no_key",
+                                              "error": "Semrush key not configured"}
+                        continue
+                    results = agent.fetch_semrush_phrase_organic(
+                        keyword, region, skey_row["api_key"],
+                        key_id=skey_row.get("id"), display_limit=100)
+                    cost_summary["semrush"] += 10
+                else:
+                    per_provider[prov] = {"results": [], "source": "unknown_provider"}
+                    continue
+
+                # Save to cache
+                database.save_cross_verify_cache(search_id, prov, results)
+                per_provider[prov] = {
+                    "results": results,
+                    "source":  "fresh",
+                }
+                fetched_fresh_for.append(prov)
+            except Exception as e:
+                per_provider[prov] = {"results": [], "source": "error", "error": str(e)}
+
+        # Build merged comparison
+        # url → {url, domain, positions: {prov: int}, providers_count}
+        merged = {}
+        for prov, data in per_provider.items():
+            for item in (data.get("results") or []):
+                url = item.get("url", "").strip()
+                if not url:
+                    continue
+                dom = item.get("domain", "").lower().replace("www.", "")
+                if url not in merged:
+                    merged[url] = {
+                        "url": url, "domain": dom, "title": item.get("title", ""),
+                        "positions": {},
+                    }
+                merged[url]["positions"][prov] = item.get("position")
+
+        # Convert to list + compute confidence + best position + spread
+        merged_list = []
+        active_providers = [p for p in providers if per_provider.get(p, {}).get("source") != "no_key"
+                                                  and per_provider.get(p, {}).get("source") != "unknown_provider"]
+        total_provs = max(1, len(active_providers))
+
+        for url, row in merged.items():
+            positions = [p for p in row["positions"].values() if p is not None]
+            n_providers = len(positions)
+            best = min(positions) if positions else None
+            spread = (max(positions) - min(positions)) if len(positions) > 1 else 0
+
+            if n_providers == total_provs and total_provs >= 2:
+                confidence = "high"
+            elif n_providers >= 2:
+                confidence = "medium"
+            else:
+                confidence = "low"
+
+            row["providers_count"] = n_providers
+            row["best_position"]   = best
+            row["spread"]          = spread
+            row["confidence"]      = confidence
+            merged_list.append(row)
+
+        # Sort by best position
+        merged_list.sort(key=lambda r: r["best_position"] if r["best_position"] is not None else 9999)
+
+        # Stats
+        stats = {
+            "total_unique_urls": len(merged_list),
+            "high_confidence":   sum(1 for r in merged_list if r["confidence"] == "high"),
+            "medium_confidence": sum(1 for r in merged_list if r["confidence"] == "medium"),
+            "low_confidence":    sum(1 for r in merged_list if r["confidence"] == "low"),
+        }
+
+        return {
+            "search_id": search_id,
+            "keyword": keyword,
+            "region": region,
+            "providers_queried": providers,
+            "active_providers": active_providers,
+            "per_provider_summary": {
+                p: {
+                    "count":      len(per_provider.get(p, {}).get("results") or []),
+                    "source":     per_provider.get(p, {}).get("source"),
+                    "fetched_at": per_provider.get(p, {}).get("fetched_at"),
+                    "error":      per_provider.get(p, {}).get("error"),
+                } for p in providers
+            },
+            "merged_results": merged_list,
+            "stats": stats,
+            "cost_consumed": cost_summary,
+            "used_cache_for": used_cache_for,
+            "fetched_fresh_for": fetched_fresh_for,
+        }
+
+    # ── Multi-region bundle search (Serper only — cheap) ───────────────
+
+    @app.post("/api/search/multi-region")
+    async def multi_region_search(req: MultiRegionSearchRequest):
+        """
+        Run the same Serper search across multiple regions sequentially.
+        Cost: 1 Serper credit per region (plus N for additional SERP pages).
+        Each region becomes its own search entry in history.
+        """
+        from queue import Queue
+        import threading, uuid
+
+        if not req.keyword.strip():
+            raise HTTPException(400, "keyword required")
+        if not req.regions:
+            raise HTTPException(400, "select at least one region")
+
+        run_id = uuid.uuid4().hex[:8]
+        q: Queue = Queue()
+        app.state.runs[run_id] = {"queue": q, "results": None, "error": None}
+
+        def worker():
+            try:
+                company = None
+                name_variants = None
+                if req.company_id:
+                    company = database.get_company(req.company_id)
+                    if company:
+                        name_variants = company["name_variants"]
+
+                summary_per_region = []
+                for region in req.regions:
+                    q.put({"type": "log", "msg": f"=== Region: {region.upper()} ==="})
+                    try:
+                        results = agent.run(
+                            keyword=req.keyword,
+                            domain=(company["domain"] if company else None),
+                            name_variants=name_variants,
+                            mode=req.mode,
+                            target_listicles=req.target_listicles,
+                            max_pages=req.max_pages,
+                            region=region,
+                            find_contacts=False,
+                            progress_cb=lambda ev: q.put(ev),
+                            write_file=False,
+                        )
+                        # Persist
+                        import sqlite3
+                        serp_hash = database.get_serp_hash(results)
+                        kr = database.find_keyword(req.keyword, region)
+                        if not kr:
+                            kid = database.save_keyword(req.keyword, region, serp_hash)
+                        else:
+                            kid = kr[0]
+                            conn = sqlite3.connect(database.DB_PATH)
+                            conn.execute("UPDATE keywords SET serp_hash = ? WHERE id = ?",
+                                         (serp_hash, kid))
+                            conn.commit(); conn.close()
+                        dom_save = (company["domain"] if company else None)
+                        sid = database.save_search(kid, dom_save, len(results),
+                                                   company_id=(company["id"] if company else None))
+                        database.save_results(sid, results)
+                        # Persist extracted competitors
+                        for rr in results:
+                            comps = rr.get("_extracted_companies")
+                            if comps:
+                                rid = database.find_result_id_by_url(rr["URL"], search_id=sid)
+                                if rid:
+                                    database.save_listicle_companies(rid, comps)
+                        summary_per_region.append({
+                            "region": region, "search_id": sid, "count": len(results),
+                        })
+                    except Exception as e:
+                        q.put({"type": "log", "msg": f"[FAIL] {region}: {e}"})
+                        summary_per_region.append({"region": region, "error": str(e)})
+
+                app.state.runs[run_id]["results"] = summary_per_region
+                q.put({"type": "done", "results": summary_per_region})
+            except Exception as e:
+                app.state.runs[run_id]["error"] = str(e)
+                q.put({"type": "error", "msg": str(e)})
+
+        threading.Thread(target=worker, daemon=True).start()
+        return {"run_id": run_id, "regions": req.regions, "estimated_serper_credits": len(req.regions)}
+
+    @app.post("/api/search/multi-region/merge")
+    async def merge_multi_region(req: MultiRegionMergeRequest):
+        """
+        Merge several searches (typically a multi-region bundle) into a single
+        wide-format view: one row per URL with columns per region.
+        Returns merged JSON; if export=true, returns Excel file.
+        """
+        import sqlite3, io
+        if not req.search_ids:
+            raise HTTPException(400, "search_ids required")
+
+        conn = sqlite3.connect(database.DB_PATH)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+        placeholders = ",".join("?" * len(req.search_ids))
+        c.execute(f"""
+            SELECT s.id as search_id, k.keyword, k.location,
+                   r.url, r.domain, r.title, r.page_type,
+                   r.position, r.status, r.position_on_page, r.link_type
+            FROM searches s
+            JOIN keywords k ON s.keyword_id = k.id
+            JOIN results r ON r.search_id = s.id
+            WHERE s.id IN ({placeholders})
+            ORDER BY r.position
+        """, req.search_ids)
+        rows = [dict(r) for r in c.fetchall()]
+
+        # Get unique keyword (should all be the same in a bundle)
+        c.execute(f"SELECT DISTINCT keyword FROM keywords WHERE id IN "
+                  f"(SELECT keyword_id FROM searches WHERE id IN ({placeholders}))",
+                  req.search_ids)
+        kws = [r[0] for r in c.fetchall()]
+        keyword = kws[0] if kws else "(merged)"
+        conn.close()
+
+        # Build wide format: dict[url] = {url, domain, page_type, per_region: {pos, status, link_type}}
+        regions_in_set = sorted(set(r["location"] for r in rows if r["location"]))
+        merged = {}
+        for r in rows:
+            url = (r["url"] or "").strip()
+            if not url:
+                continue
+            if url not in merged:
+                merged[url] = {
+                    "url": url,
+                    "domain": r["domain"],
+                    "title": r.get("title", ""),
+                    "page_type": r["page_type"],
+                    "by_region": {},
+                }
+            region = r["location"] or "?"
+            merged[url]["by_region"][region] = {
+                "serp_pos":   r["position"],
+                "status":     r["status"] or "",
+                "page_pos":   r["position_on_page"] or "",
+                "link_type":  r["link_type"] or "",
+            }
+
+        merged_list = list(merged.values())
+        # Compute best_pos + region_count for sorting
+        for row in merged_list:
+            positions = [d.get("serp_pos") for d in row["by_region"].values()
+                         if d.get("serp_pos") is not None]
+            row["best_pos"] = min(positions) if positions else None
+            row["region_count"] = len(row["by_region"])
+            row["regions_listed"] = sorted(row["by_region"].keys())
+        merged_list.sort(key=lambda r: (r["best_pos"] if r["best_pos"] else 9999,
+                                        -r["region_count"]))
+
+        stats = {
+            "total_urls":   len(merged_list),
+            "multi_region": sum(1 for r in merged_list if r["region_count"] > 1),
+            "single_region": sum(1 for r in merged_list if r["region_count"] == 1),
+            "regions":      regions_in_set,
+        }
+
+        if not req.export:
+            return {
+                "keyword": keyword,
+                "regions": regions_in_set,
+                "merged_results": merged_list,
+                "stats": stats,
+            }
+
+        # Generate wide-format Excel
+        buf = io.BytesIO()
+        agent.write_excel_multi_region(keyword, merged_list, regions_in_set, buf)
+        buf.seek(0)
+        from datetime import datetime
+        now = datetime.now()
+        safe = re.sub(r"[^A-Za-z0-9]+", "_", keyword).strip("_")[:50]
+        fname = f"{safe}_MultiRegion_{now.strftime('%Y-%m-%d_%A')}.xlsx"
+        from fastapi.responses import StreamingResponse
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
+
+    # ── Competitor keyword mining (Semrush domain_organic) ─────────────
+
+    @app.get("/api/competitors/mine-preview/{company_id}")
+    async def mine_preview(company_id: int, competitor_domain: str, region: str = "us"):
+        """Show cache status + cost estimate BEFORE spending Semrush units."""
+        dom = (competitor_domain or "").strip().lower().replace("www.", "")
+        if not dom:
+            raise HTTPException(400, "competitor_domain required")
+        status = database.semrush_cache_status("domain_organic", dom, region)
+        spent_month = database.get_semrush_units_spent("month")
+        return {
+            "company_id": company_id,
+            "competitor_domain": dom,
+            "region": region,
+            "cache": status,
+            "cost_if_fresh": 10,
+            "cost_unit": "Semrush units",
+            "will_be_free_if_cached": status.get("fresh", False),
+            "semrush_spent_this_month": spent_month["units_spent"],
+        }
+
+    @app.post("/api/competitors/mine/{company_id}")
+    async def mine_competitor(company_id: int, competitor_domain: str,
+                              req: CompetitorMineRequest):
+        """
+        Fetch keywords competitor ranks for (Semrush domain_organic, 10 units).
+        Cached 30 days. Returns top 10 keywords by traffic.
+        """
+        dom = (competitor_domain or "").strip().lower().replace("www.", "")
+        if not dom:
+            raise HTTPException(400, "competitor_domain required")
+        company = database.get_company(company_id)
+        if not company:
+            raise HTTPException(404, "company not found")
+        skey_row = database.get_active_api_key("semrush")
+        if not skey_row:
+            raise HTTPException(400, "Semrush API key not configured")
+
+        # Check cache unless force_fresh
+        if not req.force_fresh:
+            cached, fetched_at = database.get_semrush_cache("domain_organic", dom, req.region)
+            if cached is not None:
+                return {
+                    "competitor_domain": dom, "region": req.region,
+                    "source": "cache", "fetched_at": fetched_at,
+                    "units_spent": 0, "keywords": cached,
+                }
+
+        # Fresh fetch
+        results = agent.fetch_semrush_domain_organic(
+            dom, req.region, skey_row["api_key"],
+            key_id=skey_row.get("id"), display_limit=req.display_limit,
+        )
+        return {
+            "competitor_domain": dom, "region": req.region,
+            "source": "fresh", "units_spent": 10,
+            "keywords": results,
+        }
+
+    # ── Listicle priority score (opt-in per listicle) ─────────────────
+
+    @app.get("/api/listicles/{result_id}/score-preview")
+    async def score_preview(result_id: int):
+        """Show cache + cost estimate for scoring a listicle."""
+        info = database.get_result_basic(result_id)
+        if not info:
+            raise HTTPException(404, "result not found")
+        url = info["url"]
+        region = info["location"] or "us"
+        existing = database.get_listicle_score(result_id)
+        url_cache = database.semrush_cache_status("url_organic", url, region)
+        return {
+            "result_id": result_id,
+            "url": url, "domain": info["domain"], "region": region,
+            "already_scored": existing is not None,
+            "current_score": existing["priority_score"] if existing else None,
+            "scored_at": existing["scored_at"] if existing else None,
+            "url_organic_cache": url_cache,
+            "cost_if_fresh": 10,
+            "will_be_free_if_cached": url_cache.get("fresh", False) or existing is not None,
+        }
+
+    @app.post("/api/listicles/{result_id}/score")
+    async def score_listicle(result_id: int, req: ListicleScoreRequest):
+        """
+        Compute priority score for a listicle.
+        Cost: 10 Semrush units (url_organic) — IF not cached.
+        Formula: authority × log(kw+1) × competitor_density × you_not_listed_bonus
+        Cached 14 days.
+        """
+        info = database.get_result_basic(result_id)
+        if not info:
+            raise HTTPException(404, "result not found")
+        url = info["url"]
+        region = info["location"] or "us"
+        domain = info["domain"]
+
+        # If already scored & not force_fresh → return cached
+        if not req.force_fresh:
+            existing = database.get_listicle_score(result_id)
+            if existing:
+                return {
+                    "source": "cache", "result_id": result_id,
+                    "score": existing["priority_score"],
+                    "breakdown": existing.get("breakdown", {}),
+                    "units_spent": 0,
+                }
+
+        # Fetch Semrush url_organic
+        skey_row = database.get_active_api_key("semrush")
+        sem_data = {"keyword_count": 0, "top_keywords": [], "top_traffic_pct": 0}
+        units_spent = 0
+        if skey_row:
+            sem_data = agent.fetch_semrush_url_organic(
+                url, region, skey_row["api_key"], key_id=skey_row.get("id"))
+            # Check if Semrush actually fetched fresh (vs cache) — cache age tells us
+            url_cache_st = database.semrush_cache_status("url_organic", url, region)
+            if url_cache_st.get("age_hours", 999) < 0.1:  # fresh fetch in last few seconds
+                units_spent = 10
+
+        # Get authority from OPR
+        opr_key_row = database.get_active_api_key("openpagerank")
+        opr_key = opr_key_row["api_key"] if opr_key_row else ""
+        authority = 0
+        if opr_key and domain:
+            try:
+                opr_data = agent.fetch_openpagerank([domain], opr_key,
+                                                     opr_key_id=opr_key_row.get("id") if opr_key_row else None)
+                a = opr_data.get(domain, 0)
+                authority = float(a) if a not in ("", None) else 0
+            except Exception:
+                authority = 0
+
+        # Competitor density — count distinct competitor domains on this listicle
+        listicle_comps = database.get_listicle_companies(result_id)
+        competitor_count = len([c for c in listicle_comps if c.get("domain")])
+        # Is your company listed here? (status == 'Listed')
+        you_listed = info.get("status") == "Listed"
+
+        # Score formula
+        # Authority base (0-100), capped contribution 0-1
+        a_norm = min(authority / 100.0, 1.0) if authority else 0
+        # Keyword count log-scale
+        import math
+        kw_factor = math.log10(sem_data["keyword_count"] + 1) / 3  # 0-1 for 0-1000 kw
+        kw_factor = min(kw_factor, 1.0)
+        # Competitor density — more competitors = stronger listicle
+        comp_factor = min(competitor_count / 10.0, 1.0)  # cap at 10
+        # Opportunity bonus — being NOT listed = 1.5x
+        opp_bonus = 1.0 if you_listed else 1.5
+
+        raw = (a_norm * 0.35 + kw_factor * 0.35 + comp_factor * 0.30) * opp_bonus
+        priority = round(min(raw * 100, 100), 1)
+
+        breakdown = {
+            "authority_norm": round(a_norm, 3),
+            "keyword_count": sem_data["keyword_count"],
+            "kw_factor": round(kw_factor, 3),
+            "competitor_count": competitor_count,
+            "comp_factor": round(comp_factor, 3),
+            "you_listed": you_listed,
+            "opportunity_bonus": opp_bonus,
+            "top_keywords": sem_data["top_keywords"][:5],
+        }
+
+        database.save_listicle_score(result_id, authority, sem_data["keyword_count"],
+                                     competitor_count, you_listed, priority, breakdown)
+        return {
+            "source": "fresh", "result_id": result_id,
+            "score": priority, "breakdown": breakdown,
+            "units_spent": units_spent,
+        }
+
+    # ── Semrush spend dashboard ────────────────────────────────────────
+
+    @app.post("/api/maintenance/dedupe-results")
+    async def dedupe_results():
+        """One-time cleanup: removes duplicate URLs within each search."""
+        result = database.dedupe_existing_results()
+        return result
+
+    @app.get("/api/semrush/spend")
+    async def semrush_spend():
+        """Real-time Semrush spending — today + this month."""
+        today = database.get_semrush_units_spent("day")
+        month = database.get_semrush_units_spent("month")
+        # Active key for quota
+        skey = database.get_active_api_key("semrush")
+        monthly_limit = skey.get("monthly_limit") if skey else None
+        return {
+            "today_units":   today["units_spent"],
+            "today_calls":   today["calls"],
+            "month_units":   month["units_spent"],
+            "month_calls":   month["calls"],
+            "monthly_limit": monthly_limit,
+            "pct_used":      round(month["units_spent"] / monthly_limit * 100, 1) if monthly_limit else None,
+        }
 
     # ── Bulk keyword search ────────────────────────────────────────────
 

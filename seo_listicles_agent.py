@@ -342,6 +342,231 @@ def fetch_serp_page(keyword: str, creds: dict, page_num: int, region: str) -> li
 
 # ── Authority ─────────────────────────────────────────────────────────────────
 
+def fetch_semrush_phrase_organic(keyword: str, region: str, semrush_key: str,
+                                 key_id: int = None, display_limit: int = 100) -> list:
+    """
+    Fetch Semrush SERP (phrase_organic) for a keyword in a region.
+    Returns: [{position, domain, url}, ...] up to display_limit results.
+    Cost: 10 API units per call.
+
+    Database codes: us, uk, ca, au, in, de, fr, sg, ae
+    """
+    if not semrush_key:
+        return []
+    db = REGION_MAP.get(region, REGION_MAP["us"])["semrush_db"]
+    params = {
+        "type":            "phrase_organic",
+        "key":             semrush_key,
+        "phrase":          keyword,
+        "database":        db,
+        "display_limit":   display_limit,
+        "export_columns":  "Dn,Ur",
+    }
+    try:
+        r = requests.get("https://api.semrush.com/?" + urllib.parse.urlencode(params), timeout=30)
+        text = r.text.strip()
+    except requests.RequestException as e:
+        _log_api("semrush", success=False, meta={"error": str(e), "endpoint": "phrase_organic"},
+                 api_key_id=key_id)
+        return []
+
+    # Error responses start with "ERROR" or are empty
+    if not text or text.startswith("ERROR"):
+        _log_api("semrush", success=False, meta={"error": text[:200], "endpoint": "phrase_organic"},
+                 api_key_id=key_id)
+        return []
+
+    lines = [ln for ln in text.split("\n") if ln.strip()]
+    if len(lines) < 2:
+        # No data rows
+        _log_api("semrush", success=True, meta={"endpoint": "phrase_organic", "rows": 0},
+                 api_key_id=key_id)
+        return []
+
+    # First line is header (Domain;Url), subsequent are data
+    headers = [h.strip().lower() for h in lines[0].split(";")]
+    results = []
+    for i, ln in enumerate(lines[1:], 1):
+        parts = ln.split(";")
+        row = {headers[j]: parts[j].strip() if j < len(parts) else "" for j in range(len(headers))}
+        url = row.get("url", "")
+        dom = row.get("domain", domain_of(url))
+        if not dom:
+            continue
+        results.append({
+            "position": i,
+            "domain":   dom.lower().replace("www.", ""),
+            "url":      url,
+            "title":    "",
+        })
+
+    _log_api("semrush", success=True,
+             meta={"endpoint": "phrase_organic", "rows": len(results), "units": 10},
+             api_key_id=key_id)
+    return results
+
+
+def fetch_semrush_domain_organic(domain: str, region: str, semrush_key: str,
+                                  key_id: int = None, display_limit: int = 10) -> list:
+    """
+    Get keywords a domain ranks for (organic). Returns top N by traffic.
+    Cost: 10 units per call.
+    Cached 30 days (see database.SEMRUSH_TTL_HOURS).
+
+    Returns: [{keyword, position, traffic_pct, search_volume, cpc, url}, ...]
+    """
+    try:
+        from database import get_semrush_cache, save_semrush_cache
+    except Exception:
+        get_semrush_cache = save_semrush_cache = None
+
+    domain_norm = (domain or "").lower().replace("www.", "").strip()
+    if not domain_norm or not semrush_key:
+        return []
+
+    # Cache check
+    if get_semrush_cache:
+        cached, _fetched_at = get_semrush_cache("domain_organic", domain_norm, region)
+        if cached is not None:
+            return cached
+
+    db = REGION_MAP.get(region, REGION_MAP["us"])["semrush_db"]
+    params = {
+        "type":           "domain_organic",
+        "key":            semrush_key,
+        "domain":         domain_norm,
+        "database":       db,
+        "display_limit":  display_limit,
+        "export_columns": "Ph,Po,Nq,Cp,Co,Tg,Tc,Ur",
+    }
+    try:
+        r = requests.get("https://api.semrush.com/?" + urllib.parse.urlencode(params), timeout=30)
+        text = r.text.strip()
+    except requests.RequestException as e:
+        _log_api("semrush", success=False,
+                 meta={"error": str(e), "endpoint": "domain_organic", "units": 10},
+                 api_key_id=key_id)
+        return []
+
+    if not text or text.startswith("ERROR"):
+        _log_api("semrush", success=False,
+                 meta={"error": text[:200], "endpoint": "domain_organic", "units": 10},
+                 api_key_id=key_id)
+        return []
+
+    lines = [ln for ln in text.split("\n") if ln.strip()]
+    if len(lines) < 2:
+        _log_api("semrush", success=True,
+                 meta={"endpoint": "domain_organic", "rows": 0, "units": 10},
+                 api_key_id=key_id)
+        if save_semrush_cache:
+            save_semrush_cache("domain_organic", domain_norm, region, [], units_cost=10)
+        return []
+
+    headers = [h.strip() for h in lines[0].split(";")]
+    out = []
+    for ln in lines[1:]:
+        parts = ln.split(";")
+        row = {headers[i]: parts[i].strip() if i < len(parts) else "" for i in range(len(headers))}
+        try:
+            out.append({
+                "keyword":        row.get("Keyword", ""),
+                "position":       int(row.get("Position", 0) or 0),
+                "search_volume":  int(row.get("Search Volume", 0) or 0),
+                "cpc":            float(row.get("CPC", 0) or 0),
+                "competition":    float(row.get("Competition", 0) or 0),
+                "traffic_pct":    float(row.get("Traffic (%)", 0) or 0),
+                "traffic_cost":   float(row.get("Traffic Cost (%)", 0) or 0),
+                "url":            row.get("Url", ""),
+            })
+        except (ValueError, TypeError):
+            continue
+
+    _log_api("semrush", success=True,
+             meta={"endpoint": "domain_organic", "rows": len(out), "units": 10},
+             api_key_id=key_id)
+
+    if save_semrush_cache:
+        save_semrush_cache("domain_organic", domain_norm, region, out, units_cost=10)
+    return out
+
+
+def fetch_semrush_url_organic(url: str, region: str, semrush_key: str,
+                              key_id: int = None, display_limit: int = 10) -> dict:
+    """
+    Get organic keyword count + top keywords a SPECIFIC URL ranks for.
+    Cost: 10 units per call. Cached 14 days.
+
+    Returns: {keyword_count, top_keywords: [{keyword, position, search_volume}], top_traffic_pct}
+    """
+    try:
+        from database import get_semrush_cache, save_semrush_cache
+    except Exception:
+        get_semrush_cache = save_semrush_cache = None
+
+    if not url or not semrush_key:
+        return {"keyword_count": 0, "top_keywords": [], "top_traffic_pct": 0}
+
+    if get_semrush_cache:
+        cached, _fa = get_semrush_cache("url_organic", url, region)
+        if cached is not None:
+            return cached if isinstance(cached, dict) else {"keyword_count": 0, "top_keywords": [], "top_traffic_pct": 0}
+
+    db = REGION_MAP.get(region, REGION_MAP["us"])["semrush_db"]
+    params = {
+        "type":           "url_organic",
+        "key":            semrush_key,
+        "url":            url,
+        "database":       db,
+        "display_limit":  display_limit,
+        "export_columns": "Ph,Po,Nq,Tg",
+    }
+    try:
+        r = requests.get("https://api.semrush.com/?" + urllib.parse.urlencode(params), timeout=30)
+        text = r.text.strip()
+    except requests.RequestException as e:
+        _log_api("semrush", success=False,
+                 meta={"error": str(e), "endpoint": "url_organic", "units": 10},
+                 api_key_id=key_id)
+        return {"keyword_count": 0, "top_keywords": [], "top_traffic_pct": 0}
+
+    if not text or text.startswith("ERROR"):
+        _log_api("semrush", success=False,
+                 meta={"error": text[:200], "endpoint": "url_organic", "units": 10},
+                 api_key_id=key_id)
+        result = {"keyword_count": 0, "top_keywords": [], "top_traffic_pct": 0}
+        if save_semrush_cache:
+            save_semrush_cache("url_organic", url, region, result, units_cost=10)
+        return result
+
+    lines = [ln for ln in text.split("\n") if ln.strip()]
+    out = {"keyword_count": 0, "top_keywords": [], "top_traffic_pct": 0}
+    if len(lines) >= 2:
+        headers = [h.strip() for h in lines[0].split(";")]
+        for ln in lines[1:]:
+            parts = ln.split(";")
+            row = {headers[i]: parts[i].strip() if i < len(parts) else "" for i in range(len(headers))}
+            try:
+                out["top_keywords"].append({
+                    "keyword":       row.get("Keyword", ""),
+                    "position":      int(row.get("Position", 0) or 0),
+                    "search_volume": int(row.get("Search Volume", 0) or 0),
+                    "traffic_pct":   float(row.get("Traffic (%)", 0) or 0),
+                })
+                out["top_traffic_pct"] += float(row.get("Traffic (%)", 0) or 0)
+            except (ValueError, TypeError):
+                continue
+        out["keyword_count"] = len(out["top_keywords"])
+
+    _log_api("semrush", success=True,
+             meta={"endpoint": "url_organic", "rows": out["keyword_count"], "units": 10},
+             api_key_id=key_id)
+
+    if save_semrush_cache:
+        save_semrush_cache("url_organic", url, region, out, units_cost=10)
+    return out
+
+
 def fetch_openpagerank(domains: list, opr_key: str, opr_key_id: int = None) -> dict:
     """Open PageRank bulk lookup — free authority proxy, 0-100 scaled."""
     result = {}
@@ -1114,6 +1339,147 @@ def detect_email(url: str, domain: str, html: str) -> dict:
 
 # ── Excel export ──────────────────────────────────────────────────────────────
 
+def write_excel_multi_region(keyword: str, merged_rows: list, regions: list, output):
+    """
+    Wide-format Excel: one row per URL with side-by-side columns for each region.
+    Columns: Domain | Pages | Page Type | <REGION1> Pos | <REGION1> Status | ... | Best Pos | Regions Listed
+    """
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = openpyxl.Workbook()
+    HEAD_FILL = PatternFill("solid", fgColor="1F4E78")
+    HEAD_FONT = Font(color="FFFFFF", bold=True, size=11)
+    REGION_FILL = PatternFill("solid", fgColor="2E75B6")
+    REGION_FONT = Font(color="FFFFFF", bold=True, size=10)
+    THIN = Side(style="thin", color="D9D9D9")
+    BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
+
+    ws = wb.active
+    ws.title = "Multi-Region Results"
+
+    # Header rows: row 1 = title, row 2 = region groupings, row 3 = column headers
+    n_regions = len(regions)
+    total_cols = 4 + n_regions * 2 + 3  # base 4 + 2 per region + 3 trailing
+
+    ws.cell(1, 1, f"Multi-Region SERP — \"{keyword}\"")
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=total_cols)
+    c1 = ws.cell(1, 1)
+    c1.font = Font(bold=True, size=14, color="FFFFFF")
+    c1.alignment = Alignment(horizontal="center", vertical="center")
+    c1.fill = PatternFill("solid", fgColor="1F4E78")
+    ws.row_dimensions[1].height = 28
+
+    ws.cell(2, 1, f"Generated: {datetime.now():%Y-%m-%d %A %H:%M} · Regions: {', '.join(r.upper() for r in regions)}")
+    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=total_cols)
+    c2 = ws.cell(2, 1)
+    c2.font = Font(italic=True, color="5A6A7E", size=10)
+    c2.alignment = Alignment(horizontal="center")
+
+    # Row 3 = region group headers (merge cells over pos+status pair)
+    ws.cell(3, 1, "Listicle URL")
+    base_cols = ["Domain", "Pages", "Page Type"]
+    for i, name in enumerate(base_cols, 1):
+        cell = ws.cell(3, i, name)
+        cell.fill = HEAD_FILL; cell.font = HEAD_FONT
+        cell.alignment = Alignment(horizontal="center", wrap_text=True, vertical="center")
+        cell.border = BORDER
+    ws.cell(3, 1, "Domain")  # overwrite
+    # Region group cells (each spans 2 columns: Pos + Status)
+    col = len(base_cols) + 1
+    for region in regions:
+        ws.cell(3, col, region.upper())
+        ws.merge_cells(start_row=3, start_column=col, end_row=3, end_column=col + 1)
+        rc = ws.cell(3, col)
+        rc.fill = REGION_FILL; rc.font = REGION_FONT
+        rc.alignment = Alignment(horizontal="center", vertical="center")
+        rc.border = BORDER
+        col += 2
+    # Trailing columns
+    for name in ("Best Pos", "Regions", "URL"):
+        cell = ws.cell(3, col, name)
+        cell.fill = HEAD_FILL; cell.font = HEAD_FONT
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = BORDER
+        col += 1
+
+    # Row 4 = sub-headers for each region (Pos, Status)
+    ws.cell(4, 1, "")
+    for i in range(len(base_cols)):
+        ws.cell(4, i + 1, "")
+    col = len(base_cols) + 1
+    for region in regions:
+        for sub in ("Pos", "Status"):
+            cell = ws.cell(4, col, sub)
+            cell.fill = HEAD_FILL; cell.font = HEAD_FONT
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.border = BORDER
+            col += 1
+
+    # Column widths
+    widths = {1: 28, 2: 50, 3: 22}
+    for i in range(1, total_cols + 1):
+        if i in widths:
+            ws.column_dimensions[get_column_letter(i)].width = widths[i]
+        else:
+            ws.column_dimensions[get_column_letter(i)].width = 12
+
+    # Data rows
+    def page_type_fill(pt):
+        if pt == "Aggregator":  return PatternFill("solid", fgColor="FFE6CC")
+        if pt == "Service Page": return PatternFill("solid", fgColor="F0E6FF")
+        if pt and pt.startswith("Listicle"): return PatternFill("solid", fgColor="E7F3FF")
+        if pt == "Video":       return PatternFill("solid", fgColor="FFD6E0")
+        if pt == "Possible listicle": return PatternFill("solid", fgColor="FFF7E6")
+        return None
+
+    def status_fill(s):
+        if s == "Listed": return PatternFill("solid", fgColor="C6EFCE")
+        if s == "Check Manually": return PatternFill("solid", fgColor="FFF2CC")
+        return None
+
+    row_idx = 5
+    for r in merged_rows:
+        ws.cell(row_idx, 1, r.get("domain") or "")
+        ws.cell(row_idx, 2, r.get("url") or "")
+        pt = r.get("page_type") or ""
+        c_pt = ws.cell(row_idx, 3, pt)
+        col = len(base_cols) + 1
+        for region in regions:
+            data = r.get("by_region", {}).get(region, {})
+            pos = data.get("serp_pos")
+            status = data.get("status") or ""
+            display_status = "" if status == "Not Listed" else status
+            ws.cell(row_idx, col, pos if pos is not None else "")
+            c_st = ws.cell(row_idx, col + 1, display_status)
+            sf = status_fill(display_status)
+            if sf: c_st.fill = sf
+            col += 2
+        ws.cell(row_idx, col, r.get("best_pos") if r.get("best_pos") is not None else "")
+        regions_listed = r.get("regions_listed", [])
+        ws.cell(row_idx, col + 1, ", ".join(rg.upper() for rg in regions_listed))
+        ws.cell(row_idx, col + 2, r.get("url") or "")
+
+        # Apply page type fill
+        pt_fill = page_type_fill(pt)
+        if pt_fill: c_pt.fill = pt_fill
+
+        # Borders + alignment on all cells of this row
+        for col_i in range(1, total_cols + 1):
+            cell = ws.cell(row_idx, col_i)
+            cell.border = BORDER
+            if col_i == 2 or col_i == total_cols:
+                cell.alignment = Alignment(wrap_text=True, vertical="top")
+            else:
+                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        row_idx += 1
+
+    ws.freeze_panes = "A5"
+    ws.auto_filter.ref = f"A3:{get_column_letter(total_cols)}{ws.max_row}"
+    wb.save(output)
+
+
 def write_excel_company(company_name: str, company_domain: str, rows: list, output):
     """
     Write a per-company Excel report.
@@ -1443,10 +1809,12 @@ def run(
     aggregators      = []   # aggregators found in the SERP range
     service_pages    = []   # service pages found in the SERP range
     videos           = []   # video platform pages (YouTube etc.)
+    seen_urls        = set()  # dedupe across SERP pages (Google pagination can repeat URLs)
     listicle_count   = 0
     aggregator_count = 0
     service_count    = 0
     video_count      = 0
+    duplicate_count  = 0
     page_num         = 1
     last_serp_pos    = 0
 
@@ -1464,6 +1832,16 @@ def run(
         for item in page_results:
             if listicle_count >= target_listicles:
                 break
+
+            # Dedupe: skip URL if we've already collected it from a previous SERP page.
+            # Google sometimes repeats a URL when results shift between pages.
+            url_key = (item.get("url") or "").strip().rstrip("/").lower()
+            if not url_key:
+                continue
+            if url_key in seen_urls:
+                duplicate_count += 1
+                continue
+            seen_urls.add(url_key)
 
             page_type = classify(item["url"], item["domain"], item.get("title", ""))
 
@@ -1500,6 +1878,8 @@ def run(
     total = len(collected) + service_count + aggregator_count + video_count
     log(f"  Output: {len(collected)} listicles + {service_count} service + {aggregator_count} aggr + "
         f"{video_count} video = {total} total rows")
+    if duplicate_count > 0:
+        log(f"  Skipped {duplicate_count} duplicate URL(s) across SERP pages")
 
     if not collected and not aggregators:
         raise RuntimeError("No SERP results returned. Check credentials and keyword.")

@@ -157,6 +157,54 @@ def init_db():
     c.execute("CREATE INDEX IF NOT EXISTS idx_lcompanies_domain ON listicle_companies(domain)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_lcompanies_result ON listicle_companies(result_id)")
 
+    # Cross-verify cache — stores SERP fetches per (search_id, provider).
+    # Used to avoid burning credits within a 12-hour window.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS cross_verify_cache (
+            id INTEGER PRIMARY KEY,
+            search_id INTEGER NOT NULL,
+            provider TEXT NOT NULL,
+            fetched_at TEXT,
+            results_json TEXT,
+            FOREIGN KEY(search_id) REFERENCES searches(id),
+            UNIQUE(search_id, provider)
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_cv_search ON cross_verify_cache(search_id, provider)")
+
+    # Semrush generic cache — for domain_organic (30d), url_organic (14d),
+    # phrase_related (7d). Lookup_key = domain or URL or phrase.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS semrush_cache (
+            id INTEGER PRIMARY KEY,
+            method TEXT NOT NULL,
+            lookup_key TEXT NOT NULL,
+            region TEXT NOT NULL,
+            fetched_at TEXT,
+            units_cost INTEGER DEFAULT 0,
+            results_json TEXT,
+            UNIQUE(method, lookup_key, region)
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_semrush_cache ON semrush_cache(method, lookup_key, region)")
+
+    # Listicle priority score — computed authority/keyword scoring per result row.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS listicle_score (
+            id INTEGER PRIMARY KEY,
+            result_id INTEGER NOT NULL UNIQUE,
+            authority_score REAL,
+            semrush_keywords INTEGER,
+            competitor_count INTEGER,
+            you_listed INTEGER DEFAULT 0,
+            priority_score REAL,
+            breakdown_json TEXT,
+            scored_at TEXT,
+            FOREIGN KEY(result_id) REFERENCES results(id)
+        )
+    """)
+    c.execute("CREATE INDEX IF NOT EXISTS idx_lscore_result ON listicle_score(result_id)")
+
     conn.commit()
 
     # Pre-populate aggregator_domains and video_domains on first run
@@ -642,7 +690,8 @@ def get_cached_search_results(search_id: int) -> list:
     conn.row_factory = sqlite3.Row
     c = conn.cursor()
     c.execute("""
-        SELECT r.position, r.domain, r.url, r.title, r.page_type,
+        SELECT r.id as result_id,
+               r.position, r.domain, r.url, r.title, r.page_type,
                r.status, r.position_on_page, r.link_type, r.notes,
                k.keyword, k.location, s.domain as searched_domain
         FROM results r
@@ -655,6 +704,7 @@ def get_cached_search_results(search_id: int) -> list:
     for row in c.fetchall():
         d = dict(row)
         rows.append({
+            "result_id": d.get("result_id"),
             "Position": d["position"],
             "Domain": d["domain"],
             "URL": d["url"],
@@ -890,14 +940,286 @@ def get_coverage_gaps(company_id: int, competitor_domain: str) -> dict:
     }
 
 
+# ── Cross-verify cache (12-hour window) ─────────────────────────────────
+
+def save_cross_verify_cache(search_id: int, provider: str, results: list):
+    """Store cross-verify results. Replaces any existing entry for (search, provider)."""
+    now = datetime.now().isoformat()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""INSERT INTO cross_verify_cache (search_id, provider, fetched_at, results_json)
+                 VALUES (?, ?, ?, ?)
+                 ON CONFLICT(search_id, provider) DO UPDATE SET
+                   fetched_at = excluded.fetched_at,
+                   results_json = excluded.results_json""",
+              (search_id, provider, now, json.dumps(results or [])))
+    conn.commit()
+    conn.close()
+
+
+def get_cross_verify_cache(search_id: int, provider: str, max_age_hours: int = 12):
+    """
+    Return cached results if fresh (< max_age_hours old). Else None.
+    Returns: (results_list, fetched_at_iso) or (None, None) if stale/missing.
+    """
+    from datetime import datetime as dt, timedelta
+    cutoff = (dt.now() - timedelta(hours=max_age_hours)).isoformat()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""SELECT fetched_at, results_json
+                 FROM cross_verify_cache
+                 WHERE search_id = ? AND provider = ? AND fetched_at >= ?""",
+              (search_id, provider, cutoff))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        return json.loads(row[1] or "[]"), row[0]
+    return None, None
+
+
+def get_cross_verify_status(search_id: int, max_age_hours: int = 12) -> dict:
+    """For preview UI: returns {provider: 'cached'|'stale'|'missing', age_hours: float|None}."""
+    from datetime import datetime as dt
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT provider, fetched_at FROM cross_verify_cache WHERE search_id = ?",
+              (search_id,))
+    rows = c.fetchall()
+    conn.close()
+    status = {}
+    now = dt.now()
+    for prov, fa in rows:
+        if not fa:
+            continue
+        try:
+            age = (now - dt.fromisoformat(fa)).total_seconds() / 3600
+            status[prov] = {
+                "fetched_at": fa,
+                "age_hours":  round(age, 1),
+                "fresh":      age < max_age_hours,
+            }
+        except ValueError:
+            pass
+    return status
+
+
+# ── Semrush generic cache (domain_organic 30d, url_organic 14d) ─────────
+
+# Cache TTLs (in hours) per Semrush method
+SEMRUSH_TTL_HOURS = {
+    "domain_organic":  30 * 24,   # 30 days — domain rankings change slowly
+    "url_organic":     14 * 24,   # 14 days — URL keywords
+    "phrase_related":   7 * 24,   # 7 days — related queries
+    "domain_ranks":     7 * 24,   # 7 days — authority
+}
+
+
+def save_semrush_cache(method: str, lookup_key: str, region: str,
+                       results: list, units_cost: int = 10):
+    """Store Semrush response with units cost for accounting."""
+    now = datetime.now().isoformat()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""INSERT INTO semrush_cache
+                 (method, lookup_key, region, fetched_at, units_cost, results_json)
+                 VALUES (?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(method, lookup_key, region) DO UPDATE SET
+                   fetched_at = excluded.fetched_at,
+                   units_cost = excluded.units_cost,
+                   results_json = excluded.results_json""",
+              (method, lookup_key.lower(), region, now, units_cost,
+               json.dumps(results or [])))
+    conn.commit()
+    conn.close()
+
+
+def get_semrush_cache(method: str, lookup_key: str, region: str):
+    """Return cached results if fresh (using per-method TTL). Else (None, None)."""
+    from datetime import datetime as dt, timedelta
+    ttl_hours = SEMRUSH_TTL_HOURS.get(method, 24)
+    cutoff = (dt.now() - timedelta(hours=ttl_hours)).isoformat()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""SELECT fetched_at, results_json FROM semrush_cache
+                 WHERE method = ? AND lookup_key = ? AND region = ? AND fetched_at >= ?""",
+              (method, lookup_key.lower(), region, cutoff))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        return json.loads(row[1] or "[]"), row[0]
+    return None, None
+
+
+def semrush_cache_status(method: str, lookup_key: str, region: str) -> dict:
+    """For preview UI — returns cache age + freshness."""
+    from datetime import datetime as dt
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""SELECT fetched_at, units_cost FROM semrush_cache
+                 WHERE method = ? AND lookup_key = ? AND region = ?""",
+              (method, lookup_key.lower(), region))
+    row = c.fetchone()
+    conn.close()
+    if not row:
+        return {"cached": False, "fresh": False, "age_hours": None}
+    fetched_at, units = row
+    try:
+        age_h = (dt.now() - dt.fromisoformat(fetched_at)).total_seconds() / 3600
+    except ValueError:
+        return {"cached": False, "fresh": False, "age_hours": None}
+    ttl = SEMRUSH_TTL_HOURS.get(method, 24)
+    return {
+        "cached":     True,
+        "fresh":      age_h < ttl,
+        "age_hours":  round(age_h, 1),
+        "ttl_hours":  ttl,
+        "units_cost": units,
+        "fetched_at": fetched_at,
+    }
+
+
+# ── Listicle priority scoring ───────────────────────────────────────────
+
+def save_listicle_score(result_id: int, authority: float, semrush_kw: int,
+                        competitor_count: int, you_listed: bool,
+                        priority: float, breakdown: dict):
+    """Persist a computed listicle priority score."""
+    now = datetime.now().isoformat()
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""INSERT INTO listicle_score
+                 (result_id, authority_score, semrush_keywords, competitor_count,
+                  you_listed, priority_score, breakdown_json, scored_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(result_id) DO UPDATE SET
+                   authority_score = excluded.authority_score,
+                   semrush_keywords = excluded.semrush_keywords,
+                   competitor_count = excluded.competitor_count,
+                   you_listed = excluded.you_listed,
+                   priority_score = excluded.priority_score,
+                   breakdown_json = excluded.breakdown_json,
+                   scored_at = excluded.scored_at""",
+              (result_id, authority, semrush_kw, competitor_count,
+               1 if you_listed else 0, priority, json.dumps(breakdown or {}), now))
+    conn.commit()
+    conn.close()
+
+
+def get_listicle_score(result_id: int):
+    """Return existing score for a listicle (if any)."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM listicle_score WHERE result_id = ?", (result_id,))
+    row = c.fetchone()
+    conn.close()
+    if row:
+        d = dict(row)
+        d["breakdown"] = json.loads(d.get("breakdown_json") or "{}")
+        return d
+    return None
+
+
+def get_result_basic(result_id: int):
+    """Helper — get URL + domain + search/keyword/company for a result row."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("""SELECT r.id, r.url, r.domain, r.page_type, r.status, r.position,
+                        s.id as search_id, s.company_id, s.domain as searched_domain,
+                        k.keyword, k.location
+                 FROM results r
+                 JOIN searches s ON r.search_id = s.id
+                 JOIN keywords k ON s.keyword_id = k.id
+                 WHERE r.id = ?""", (result_id,))
+    row = c.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+# ── Semrush spend tracking ──────────────────────────────────────────────
+
+def get_semrush_units_spent(period: str = "month") -> dict:
+    """
+    Sum Semrush units spent in current day/month.
+    period: 'day' or 'month'.
+    """
+    from datetime import datetime as dt
+    if period == "day":
+        cutoff = dt.now().strftime("%Y-%m-%d")
+    else:
+        cutoff = dt.now().strftime("%Y-%m-01")
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    # From api_usage_log — Semrush metadata includes 'units' field for accurate count
+    c.execute("""SELECT metadata FROM api_usage_log
+                 WHERE provider = 'semrush' AND success = 1 AND timestamp >= ?""",
+              (cutoff,))
+    total = 0
+    calls = 0
+    for (meta_json,) in c.fetchall():
+        try:
+            meta = json.loads(meta_json or "{}")
+            total += int(meta.get("units", 10))
+            calls += 1
+        except (ValueError, TypeError):
+            total += 10
+            calls += 1
+    conn.close()
+    return {"period": period, "units_spent": total, "calls": calls}
+
+
+def dedupe_existing_results() -> dict:
+    """
+    One-time cleanup: remove duplicate URLs within each search.
+    Keeps the row with the lowest position (best ranked).
+    Returns: {searches_cleaned, rows_deleted}
+    """
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    # Find duplicates per (search_id, normalized URL)
+    c.execute("""
+        SELECT search_id, url, MIN(id) as keep_id, COUNT(*) as cnt
+        FROM results
+        GROUP BY search_id, LOWER(TRIM(url, '/'))
+        HAVING cnt > 1
+    """)
+    dup_groups = c.fetchall()
+    rows_deleted = 0
+    searches_cleaned = set()
+    for search_id, url, keep_id, _cnt in dup_groups:
+        # Delete all rows for this (search_id, url) EXCEPT keep_id
+        c.execute("""DELETE FROM results
+                     WHERE search_id = ? AND LOWER(TRIM(url, '/')) = LOWER(TRIM(?, '/'))
+                       AND id != ?""",
+                  (search_id, url, keep_id))
+        rows_deleted += c.rowcount
+        searches_cleaned.add(search_id)
+
+    # Also update the result_count column on searches to reflect new counts
+    for sid in searches_cleaned:
+        c.execute("SELECT COUNT(*) FROM results WHERE search_id = ?", (sid,))
+        new_count = c.fetchone()[0]
+        c.execute("UPDATE searches SET result_count = ? WHERE id = ?", (new_count, sid))
+
+    conn.commit()
+    conn.close()
+    return {
+        "searches_cleaned": len(searches_cleaned),
+        "rows_deleted": rows_deleted,
+    }
+
+
 def get_startup_info() -> dict:
     """Return DB stats for startup log."""
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     out = {}
     for table in ("companies", "keywords", "searches", "results",
-                  "listicle_companies", "aggregator_domains",
-                  "video_domains", "api_keys"):
+                  "listicle_companies", "cross_verify_cache",
+                  "semrush_cache", "listicle_score",
+                  "aggregator_domains", "video_domains", "api_keys"):
         try:
             c.execute(f"SELECT COUNT(*) FROM {table}")
             out[table] = c.fetchone()[0]
